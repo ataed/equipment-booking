@@ -5,6 +5,7 @@ Four root collections, plus one subcollection planned for later (see bottom). Ev
 parent doesn't work here.
 
 ## users/{uid}
+
 - name: string
 - email: string
 - role: "manager" | "trainer"
@@ -15,13 +16,16 @@ UI reads this to list managers etc). The claim is the one rules trust. This
 field is just for the UI.
 
 ## types/{id}
+
 doc id is the type name, e.g. types/projector
+
 - name: string
 - category: string
 
 Just reference data. Nothing about bookings here.
 
 ## equipment/{id}
+
 - typeId: string, points to types/{id}
 - status: "in_service" | "out_for_repair"
 
@@ -31,24 +35,26 @@ transaction has to assign one specific free device, not just decrement a
 number.
 
 ## bookings/{id}
- - trainerId: string
- - typeId: string
- - equipmentId: string
- - startTime: Timestamp
- - endTime: Timestamp
- - status: "pending" | "approved" | "refused" | "returned"
- - createdAt: Timestamp
- - returnedAt: Timestamp | null
- - urgent: boolean
- - urgentReason: string        (empty string "" if not urgent ,same reasoning: always present)
- - damaged: boolean            (false by default)
- - damagePhotoUrl: string | null
+
+- trainerId: string
+- typeId: string
+- equipmentId: string
+- startTime: Timestamp
+- endTime: Timestamp
+- status: "pending" | "approved" | "refused" | "returned" | "canceled"
+- createdAt: Timestamp
+- returnedAt: Timestamp | null
+- urgent: boolean
+- urgentReason: string (empty string "" if not urgent ,same reasoning: always present)
+- damaged: boolean (false by default)
+- damagePhotoUrl: string | null
 
 One doc for the whole lifecycle, pending through returned. Firestore can't
 join, so if the manager's "who has what" screen needs it, it has to be on
 this doc. Not splitting returns into their own collection for that reason.
 
 ## Open question
+
 Not decided yet: copy equipment/type name onto the booking so the trainer's
 "my bookings" screen skips a second query. Coming back to this once that
 screen's query is actually written.
@@ -56,6 +62,7 @@ screen's query is actually written.
 ## Planned
 
 users/{uid}/tokens/{tokenId}
+
 - token: string
 - createdAt: Timestamp
 
