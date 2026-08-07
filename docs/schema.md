@@ -1,8 +1,9 @@
 # Schema
 
-Four root collections, plus one subcollection planned for later (see bottom). Every screen queries across parents
-(manager sees all bookings, trainer browses all types) so nesting under one
-parent doesn't work here.
+Four root collections, plus one subcollection planned for later. Everything is
+root level because every screen queries across parents: the manager sees all
+bookings across all trainers, the trainer browses all types. Nesting under one
+parent would make those queries impossible.
 
 ## users/{uid}
 
@@ -27,7 +28,7 @@ Just reference data. Nothing about bookings here.
 ## equipment/{id}
 
 - typeId: string, points to types/{id}
-- status: "in_service" | "out_for_repair"
+- status: "in_service" | "out_of_service"
 
 One doc per physical device, not a count. Decided this in questions.md item 8:
 a broken device needs to come out of service on its own, and the booking
@@ -37,6 +38,7 @@ number.
 ## bookings/{id}
 
 - trainerId: string
+- trainerName: string (copied at creation, does not follow a rename. See decisions.md)
 - typeId: string
 - equipmentId: string
 - startTime: Timestamp
@@ -49,15 +51,14 @@ number.
 - damaged: boolean (false by default)
 - damagePhotoUrl: string | null
 
+startTime is always on the hour. endTime is startTime plus 1 or 2 hours.
+Centre hours 08:00 to 18:00, so the latest start is 17:00 for one hour and
+16:00 for two. Enforced in rules, not only in the UI. 
+
 One doc for the whole lifecycle, pending through returned. Firestore can't
 join, so if the manager's "who has what" screen needs it, it has to be on
 this doc. Not splitting returns into their own collection for that reason.
 
-## Open question
-
-Not decided yet: copy equipment/type name onto the booking so the trainer's
-"my bookings" screen skips a second query. Coming back to this once that
-screen's query is actually written.
 
 ## Planned
 
