@@ -4,7 +4,8 @@
 
 ## Sprint 0
 
-Capability delivered by the seed script. The admin UI is deferred to Sprint 2.
+Capability delivered by the seed script. The screens for doing it in the app
+are Sprint 2 stories.
 
 - As a manager, I want to create trainer accounts, so that no one unknown can
   create an account and book equipment.
