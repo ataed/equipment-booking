@@ -14,7 +14,7 @@ P4: what sits on top of it
 | # | Story | P1 | P2: what must exist first | P3 | P4 |
 |---|---|---|---|---|---|
 | 1 | Trainer sees available equipment | Yes | row 16, seeded equipment and types (Sprint 0) | Low | row 2 |
-| 2 | Trainer books equipment for a slot | Yes | row 1, plus the three decisions from questions.md: pending holds the slot, trainer picks a type not a device, max 2 active bookings | High | rows 3, 7, 8, 9, 12 - everything that reads a booking |
+| 2 | Trainer books equipment for a slot | Yes | row 1, two decisions from questions.md (pending holds the slot, trainer picks a type not a device), the brief's max 2 bookings rule, and the fixed-slots decision | High | rows 3, 7, 8, 9, 12 - everything that reads a booking |
 | 3 | Trainer sees own bookings | Yes | row 2 | Low | rows 4, 5 |
 | 4 | Trainer cancels a booking | No | rows 2, 3 | Low | nothing |
 | 5 | Trainer receives a push notification on approval | No | rows 3, 8, plus FCM tokens per device | Isolated | nothing |
