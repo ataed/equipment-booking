@@ -15,10 +15,14 @@ minutes.
 
 Cost: a trainer cannot book 14:30 to 15:30. Accepted.
 
-## 2026-08-07 Trainer name denormalised onto the booking
 
-The manager's pending list needs the trainer's name. Rules cannot hide fields,
-so allowing managers to read users/{uid} would also expose phone and address.
-Copying the name onto the booking means managers never read users at all.
+## 2026-08-07 No denormalisation of trainer identity onto bookings
 
-Cost: a rename does not propagate to existing bookings. Accepted at this scope.
+The manager's pending list needs to identify the trainer. Rejected copying name
+onto the booking: users/{uid} holds nothing sensitive (name, email, role), the
+centre has 14 trainers, and the pending list is short, so reading the user
+document per row costs almost nothing. Copying would add a field that goes stale
+on rename and does not solve duplicate names anyway.
+
+Revisit if the list ever grows or if users/{uid} gains private fields, in which
+case split the document rather than copy the field.
