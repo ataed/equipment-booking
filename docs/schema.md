@@ -38,7 +38,6 @@ number.
 ## bookings/{id}
 
 - trainerId: string
-- trainerName: string (copied at creation, does not follow a rename. See decisions.md)
 - typeId: string
 - equipmentId: string
 - startTime: Timestamp
