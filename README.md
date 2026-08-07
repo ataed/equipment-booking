@@ -21,6 +21,8 @@ In the order they were written, since each one feeds the next.
 - `docs/decisions.md` - choices where a reasonable person could have gone the
   other way, with the reason and the cost.
 - `NOTES.md` - my working notes. Method, not project state.
+- `docs/runbook-sprint-0.md` - the steps for Sprint 0, in order. Closed when the
+  sprint is done.
 
 ## Sprints
 
