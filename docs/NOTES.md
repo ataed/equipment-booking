@@ -140,3 +140,37 @@ head, and you don't feel bad about that.
  
 Lost is what the start of a pipeline feels like when you can see all of
 it. It reverses the first time a red test goes green.
+
+
+## Order: spike before split
+
+Work can only be split once the contracts two people would both touch are
+frozen. If a structure is still undecided, splitting means two people building
+against something that does not exist.
+
+So: spike decides the shape, then the contracts get frozen in one serialised
+commit, then the lanes fan out. Writing the split document before the spike
+produces theory. Written after, it names real files and real frozen shapes.
+
+Found this the hard way: the availability structure two lanes would both write
+to was sitting behind a deferred decision, invisible to the split.
+
+
+## Writing acceptance criteria
+
+- The screen is not a security boundary. Rules are. Every story that touches
+  data gets a criterion asserting the wrong actor is refused.
+- Technique: keep the When fixed, vary the Given. Each variation is a criterion.
+- If the expected result differs by actor, it is a separate criterion. If it is
+  the same regardless of actor, one criterion is enough.
+- 3 to 7 criteria per story. Under 3 usually means the unhappy paths are
+  missing. Over 8 usually means the story should be split.
+- Do not test Firebase itself. Wrong password behaviour is Auth's job, not mine.
+- Sprint 2 stories stay one-liners until Sprint 2 starts. Detail is added at the
+  last responsible moment.
+  - Every criterion needs the Given to carry the state and the Then to name one
+  observable result. "I see all available equipment" cannot be checked, because
+  nothing defines available. "Given a type with at least one in-service device,
+  then that type is listed" can.
+- In the When, use "attempt to" for anything expected to fail. A When that
+  asserts the outcome contradicts the Then.
