@@ -174,3 +174,171 @@ to was sitting behind a deferred decision, invisible to the split.
   then that type is listed" can.
 - In the When, use "attempt to" for anything expected to fail. A When that
   asserts the outcome contradicts the Then.
+
+ ## Tests and CI
+
+### The words
+
+**Test.** A function that runs some of my code and asserts something about the
+result. If the assertion is false it throws.
+
+**Test runner.** The program that finds test files, runs them, and reports. Mine
+is Vitest. `vitest run` runs once and exits. Bare `vitest` watches and never
+exits, which hangs CI forever.
+
+**Assertion.** The claim. `expect(x).toBe(y)`. This is the line that turns a
+sentence from my acceptance criteria into something mechanical.
+
+**Kinds of test I will write here:**
+- unit: one function, no database, milliseconds
+- rules: does the emulator refuse a read or write for the wrong actor. Fast, no
+  browser, and the most important kind on a Firebase project
+- e2e (Playwright): drives a real browser through a whole journey across two
+  roles. Slow, and the only thing that proves the screens work together
+
+**CI, continuous integration.** Running the checks automatically on a machine
+that is not mine, on every push. The name is older than the practice and does
+not describe it well. What it actually is: a clean computer that runs my
+commands and reports whether they succeeded.
+
+**GitHub Actions.** GitHub's implementation of that. Free and unmetered for
+public repos on standard runners.
+
+**Workflow.** The file, `.github/workflows/ci.yml`. Says when to run and what to
+do.
+
+**Runner.** The machine. Fresh Ubuntu, empty, destroyed after the run.
+
+**Job.** A unit of work on one runner. I have one, called `test`. Multiple jobs
+run in parallel by default.
+
+**Step.** One thing inside a job. Either `run:` (a shell command) or `uses:` (a
+prebuilt action someone else wrote).
+
+**Action.** Reusable code, e.g. `actions/checkout@v7`. Pinned by major version
+so it does not change under me.
+
+### What GitHub actually reads
+
+The exit code. Nothing else.
+
+Every shell command exits with a number. Zero means success, anything else
+means failure. When my test failed, the last line of the log was
+`Process completed with exit code 1`. Everything above it, the diff, the file
+name, the caret under the assertion, is for me to read. GitHub only reads the
+number.
+
+Consequence: CI is not a testing feature. It is a "run these commands on a clean
+machine and check they all exited zero" feature. That is why the same pipeline
+will later run the linter, the rules tests and Playwright without any of them
+being special cases.
+
+Second consequence: a failed step stops the job. If `npm ci` fails, the tests
+never run, and the red is about installation, not about my code. Read which step
+went red before reading the log.
+
+### Why the runner starts empty
+
+Because that is the whole point. A machine with nothing on it cannot pass a test
+by accident.
+
+Each step adds exactly one thing:
+
+    Set up job         GitHub boots the machine
+    checkout           clones my repo onto it. Without this there is no code
+    setup-node         installs Node, and caches npm downloads between runs
+    npm ci             installs dependencies from the lockfile
+    npm test           runs vitest
+    Post Run x2        setup-node saves the cache, checkout drops credentials
+    Complete job       machine destroyed
+
+Five of those nine steps are mine, in the order I wrote them. Four are GitHub's
+setup and teardown.
+
+`npm ci`, not `npm install`. `ci` installs exactly the lockfile and fails if
+package.json disagrees. `install` resolves fresh, which would let a version
+published after my commit enter a build of that commit.
+
+### What CI proves that npm test locally does not
+
+My laptop has my Node version, my ~/.npmrc, leftover node_modules from three
+projects, and environment variables I set months ago and forgot. A test that
+passes only there passes by accident.
+
+CI removes all of that. Green on the runner means the code works from a clean
+clone, which is the only version of "works" that means anything to anyone else.
+
+It also caught a real thing today: node 24.18.0 on the runner versus 24.14.1
+locally, because `node-version: 24` means newest 24.x and drifts. Pinned it.
+Same reasoning as save-exact, applied to the runtime.
+
+What CI does not prove: composite indexes exist in the real Firebase project,
+custom claims propagate at real timing, cold starts, quotas. The emulator is
+faithful, not identical. That is why the definition of done still says deployed
+and clicked through by a human.
+
+### How a criterion becomes a file
+
+This is the last link in the pipeline in this file. The same question, "how will
+we know", asked at the most mechanical level available.
+
+From sprint-1-ac.md, story 4:
+
+    Given I am signed in as a trainer
+    When a rules test reads another trainer's booking as me
+    Then the read is refused
+
+Becomes tests/rules/bookings.test.js:
+
+    Given  -> setup: an authenticated context with uid trainer-a, role trainer
+    When   -> the call: getDoc on a booking owned by trainer-b
+    Then   -> the assertion: assertFails
+
+Given becomes setup, When becomes the call, Then becomes the assertion. No
+translation step, which is the reason to write criteria in that shape rather
+than as prose.
+
+The emulator is what makes this possible. It accepts any auth token without
+verifying signatures, so a test can claim to be any user with any role. No
+credentials anywhere. Fabricated identity, real rules file, real refusal.
+
+Which criteria this pipeline will check: all of them eventually. The rules ones
+as Vitest against the emulator, the journey ones as Playwright. The tags in
+sprint-1-ac.md already say which is which, so the test plan is written.
+
+### Evidence, 8 August
+
+- Broke the sanity test on purpose. Red locally, red on CI, exit code 1, steps
+  after it did not run. Fixed it, green again.
+- Verified the npmrc reaches the runner: printed npm config on CI and saw
+  ignore-scripts, save-exact and min-release-age all read from the project file,
+  not from a home config that does not exist there.
+- Green in 16 to 27 seconds. Playwright will be minutes, not seconds, which is a
+  reason to keep it in a separate job later.
+
+
+## Firebase Security Rules Audit Checklist
+
+
+From Firebase's own agent-skills repo (firebase-security-rules-auditor), kept
+before deleting the skill files that firebase init installed.
+
+1. Default Deny Rule
+   - Ensure default read/write access is denied (`allow read, write: if false;`) on unhandled paths.
+
+2. Authentication Checks
+   - Verify all sensitive paths require authentication (`request.auth != null`).
+   - Validate user identity matches target document (`request.auth.uid == userId`).
+
+3. Data Validation
+   - Enforce schema validation on writes (`request.resource.data`).
+   - Restrict allowed data fields to prevent unauthorized payload injection.
+
+4. Authorization & Roles
+   - Verify custom claims or role documents (`get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'`).
+   - Ensure dynamic lookups using `get()` or `exists()` are bounded to avoid high latency or costs.
+
+5. Granular Operation Checks
+   - Split `write` into distinct `create`, `update`, and `delete` rules to prevent unintended overrides or deletions.
+   - For this project: bookings get create (story 3) and update (story 5). Delete
+     is never granted to anyone. `allow write` would grant all three.
