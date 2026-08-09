@@ -9,21 +9,21 @@ Steps in order. One open at a time alongside NOTES.md. Close this when Sprint 0
 is done.
 
 1. ~~Next app scaffolded, Vitest green in CI.~~ Done 8 August.
-2. Firebase project, emulator running locally, `firebase emulators:start` works.
-3. The spike. One day, hard stop. Two clients create a document at a
-   deterministic ID for the same device and hour, simultaneously. Does one get
-   refused? If yes, that's the availability structure. If no, fall back to a
-   callable function using the Admin SDK, which can query inside a transaction.
-4. Write the result in decisions.md: which shape, why, what I observed. Delete
-   the spike code.
+2. ~~Firebase project, emulators running, deny-by-default rules.~~ Done 8 August.
+3. ~~The spike.~~ Done 9 August. Five experiments, not one: create-only refusal,
+   a real race, batch atomicity, the device loop, and two trainers at the same
+   instant. Deterministic slot IDs hold. The Cloud Function fallback was not
+   needed.
+4. ~~Result written in decisions.md.~~ Done 9 August. Kept the spike script in
+   `spikes/` with a README rather than deleting it, since it is the evidence.
 5. The serialised commit, one commit, kept small because on a real team everyone
    waits for it:
    - booking document shape, frozen, in a file both lanes import
-   - availability structure shape, frozen, output of step 3
- - firestore.rules: add a match block for the availability structure if the
-     spike creates a new collection. The skeleton landed 8 August.
+   - `slots` shape frozen: `{deviceId}_{isoHour}`, one field `bookingId`, never a
+     trainerId
+   - firestore.rules: add the real `slots` block, create-only with auth
    - seed.js: 2 managers, 3 trainers with claims, types, equipment, and 3
-     pending bookings, plus whatever the availability structure needs
+     pending bookings with their slot documents
    - firestore.indexes.json, empty but committed
    - Playwright added to CI alongside Vitest
 6. docs/work-split.md, now that the contracts exist.
@@ -38,3 +38,7 @@ the layers habit.
 
 - Around 10 August: rerun `npm audit fix`. The nanoid fix (3.3.17, published
   3 August) falls outside the 7-day cooldown then.
+
+- Story 5: decide how a slot is released when a booking is refused. Three known
+  options, no spike needed. Deferred because building stories 1 to 4 will make
+  the choice clearer.

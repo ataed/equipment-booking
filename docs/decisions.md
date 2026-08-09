@@ -73,3 +73,91 @@ I already run on another project.
 Reason is familiarity, not merit. Two weeks to learn Firebase is not the time to
 also learn a new Tailwind configuration model, and nothing in the acceptance
 criteria concerns styling. Cost: 4's improvements, and a future upgrade to do.
+
+
+## 2026-08-09 Slot documents with deterministic IDs, not a transaction
+
+Slot occupancy lives in a `slots` collection, one document per device per hour,
+with the ID computed from the facts: `{deviceId}_{isoHour}`, e.g.
+`projector-1_2026-08-11T14`. The document's existence means that device is taken
+for that hour. Body is one field, `bookingId`, pointing back at the booking that
+claimed it. No `trainerId` on it, ever.
+
+A booking claims all of its hours in a single `writeBatch`. To find a free device
+of the requested type, loop the candidate devices, attempt that device's batch,
+break on success, continue on refusal, refuse when no device is left.
+
+Enforced by a create-only rule:
+
+    match /slots/{slotId} {
+      allow create: if ...;
+      allow update, delete: if false;
+    }
+
+`update` denied is what makes it work. `setDoc` on an existing document evaluates
+update, so denying update turns a second write into a refusal instead of an
+overwrite.
+
+### Why not a transaction
+
+The client SDK cannot run a query inside a transaction, only `get` by document
+reference, and Security Rules cannot query at all. So "find a conflicting booking,
+then write if none exists" has no atomic implementation in the browser. The
+alternative was moving the write into a callable Cloud Function using the Admin
+SDK, which can query inside a transaction. Not needed, because deterministic IDs
+turn the conflict check into an existence check, which the database resolves
+atomically without any transaction.
+
+Second reason, and the one that made this the preferred shape rather than merely
+sufficient: rules cannot hide fields, so a document is either fully readable or
+not readable at all. Bookings carry `trainerId` and must stay private to their
+owner, so a trainer cannot read bookings to discover which slots are taken.
+`slots` carries no owner, so trainers can read it. One structure does two jobs:
+it makes the write atomic, and it is the thing a trainer reads to see availability.
+
+### What was verified, against the emulator
+
+1. Create-only rules refuse rather than overwrite. Second `setDoc` on an existing
+   slot returned `permission-denied` and the original survived.
+2. A real race resolves correctly. Two `setDoc` calls fired simultaneously via
+   `Promise.allSettled` on the same slot ID: one succeeded, one refused, exactly
+   one document existed afterwards. No transaction involved.
+3. `writeBatch` is atomic across creates. Batching an already-taken hour with a
+   free one failed entirely, and the free one was never written. So a multi-hour
+   booking claims all of its hours or none.
+4. The device loop works. A fresh `writeBatch` per iteration is required, they
+   are single-use.
+5. Two trainers requesting the same type for the same hours at the same instant
+   each got a different device. Both collided on the first device, the loser's
+   loop moved on rather than failing.
+
+### Costs accepted
+
+**A refusal is indistinguishable from broken rules.** The loop swallows
+`permission-denied` on every iteration. If the rules file is broken, every device
+looks taken and the booking is refused with no signal that anything is wrong.
+Mitigation is a rules test that asserts a create succeeds for a free slot, so a
+broken rule fails the test suite rather than silently degrading into "fully
+booked". That test is part of story 3.
+
+**A second structure to keep consistent with bookings.** Slots and bookings can
+drift. The write path is single-owned, in `lib/slots/`, and nothing else writes
+slot documents.
+
+**One write per hour claimed.** A 2-hour booking is two slot writes plus the
+booking document. Billing is per document write, so three writes per booking
+rather than one. Acceptable at 14 trainers.
+
+**No arbitrary times.** Depends on the fixed-hourly-slots decision. A trainer
+cannot book 14:30 to 15:30.
+
+### Open, and it affects story 5
+
+Refusing a booking has to free the device, and the current rule denies `delete`.
+So how a slot gets released is unresolved. Three candidates, to settle when
+story 5 is built rather than now: allow delete under a narrow condition, mark the
+slot released with a field instead of deleting it, or move release into a Cloud
+Function with the Admin SDK. Whichever it is, the release path and the claim path
+must be owned by the same module.
+
+The same question covers cancel and the scheduled auto-refuse, both Sprint 2.

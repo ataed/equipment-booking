@@ -25,6 +25,8 @@ In the order they were written, since each one feeds the next.
 - `docs/NOTES.md` - my working notes. Method, not project state.
 - `docs/runbook-sprint-0.md` - the steps for Sprint 0, in order. Closed when the
   sprint is done.
+  - `spikes/` - throwaway scripts that answered one question each. Conclusions in
+  `docs/decisions.md`.
 
 ## Sprints
 
@@ -61,5 +63,7 @@ Open audit advisories and why they are accepted: `docs/decisions.md`.
 
 ## Status
 
-Sprint 0 in progress. Next app scaffolded, Vitest green in CI. Firebase
-emulators next, then the spike on the booking write.
+Sprint 0 in progress. Next app scaffolded, Vitest green in CI, Firebase emulators
+running with deny-by-default rules. The spike on the booking write is answered:
+deterministic slot IDs, no transaction needed, reasoning in `docs/decisions.md`.
+Next is freezing the data contracts and the seed script.

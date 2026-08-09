@@ -342,3 +342,83 @@ before deleting the skill files that firebase init installed.
    - Split `write` into distinct `create`, `update`, and `delete` rules to prevent unintended overrides or deletions.
    - For this project: bookings get create (story 3) and update (story 5). Delete
      is never granted to anyone. `allow write` would grant all three.
+
+
+
+
+## Firestore client SDK, first contact
+
+Everything is two steps: build a reference to a location, then act on it.
+
+    const ref = doc(db, "collection", "docId");
+    await setDoc(ref, data);
+    const snap = await getDoc(ref);
+
+`doc()` does not touch the network. It is just an address. Missing the function
+name is a silent bug: `const ref = (db, "a", "b")` is valid JavaScript, the comma
+operator, and it evaluates to the last value. So `ref` becomes the string `"b"`
+and the error surfaces later inside `setDoc`, pointing at the wrong line.
+
+`getDoc` returns a snapshot, not my data. `snap.exists()` is a function call in
+the modular API, not a property. 
+
+### The three ways to write, and one of them destroys data
+
+    setDoc(ref, data)                    replaces the ENTIRE document
+    setDoc(ref, data, { merge: true })   merges, creates if absent
+    updateDoc(ref, data)                 merges, FAILS if absent
+
+Verified: wrote seven fields, then `setDoc` with one field, and the seven were
+gone. Then `setDoc` with `{merge: true}` and the new field was added alongside.
+
+Where this would bite in this project: story 5, the manager approving a booking.
+`setDoc(bookingRef, { status: "approved" })` would erase trainerId, equipmentId,
+startTime, everything. Use `updateDoc` for a status change, and its failing on a
+missing document is a feature, since approving a booking that does not exist
+should fail.
+
+### Reading something that is not there does not throw
+
+`getDoc` on a missing path returns a snapshot with `exists()` false and `data()`
+undefined. No error. So try/catch is the wrong tool for "not found" and if/else
+is the right one. try/catch is for things that actually throw: permission denied,
+network failure, invalid reference.
+
+### One setDoc evaluates two rules
+
+The emulator Requests tab showed CREATE and UPDATE as two separate evaluations
+from one `setDoc` call, because the SDK does not know whether the document
+exists. So `allow write` grants both, and any rule that only handles create
+leaves update open or vice versa. This is the audit checklist item about
+splitting write into create, update and delete, seen happening.
+
+### Where errors appear, and where they do not
+
+Rules denials come back over the wire to the client, so they print in my terminal,
+not the emulator's. The emulator side has three places:
+
+- Emulator UI Requests tab: the best one. Shows every client request, denied ones
+  in red, and clicking one shows the rules file with the denying line highlighted,
+  plus `request.resource.data` (what I tried to write) and `resource` (the
+  document as it exists now, undefined on a create).
+- `firestore-debug.log` in the repo root, gitignored. Verbose, rarely needed.
+- The emulator terminal stays quiet on denials.
+
+The Requests tab only shows client requests. Admin SDK calls and rule-internal
+`get()` calls are invisible there because they bypass rules. So when the seed
+script runs, that tab will show nothing.
+
+### resource vs request.resource
+
+`request.resource` is what is being written. `resource` is the document as it
+currently exists. On a create, `resource` is undefined, so touching it in a create
+rule errors and denies rather than evaluating false. This is the "missing fields
+break rules" note from the schema section, and it means story 5's rule
+(`resource.data.status == "pending"`) can only ever apply to update, never create.
+
+### The error message is better locally than in production
+
+The emulator told me exactly which line denied the request:
+`false for 'create' @ L27, false for 'update' @ L27`. In production a client gets
+a bare `permission-denied` with no explanation. So rules debugging happens against
+the emulator, not against the real project.
