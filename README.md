@@ -1,5 +1,7 @@
 # Equipment Booking
 
+[![CI](https://github.com/ataed/equipment-booking/actions/workflows/ci.yml/badge.svg)](https://github.com/ataed/equipment-booking/actions/workflows/ci.yml)
+
 A learning project. I need to learn Firebase, testing in CI, and the planning
 side of delivery: requirements, acceptance criteria, splitting work.
 
@@ -20,9 +22,11 @@ In the order they were written, since each one feeds the next.
 - `docs/sprint-1-ac.md` - Given/When/Then for the five Sprint 1 stories.
 - `docs/decisions.md` - choices where a reasonable person could have gone the
   other way, with the reason and the cost.
-- `NOTES.md` - my working notes. Method, not project state.
+- `docs/NOTES.md` - my working notes. Method, not project state.
 - `docs/runbook-sprint-0.md` - the steps for Sprint 0, in order. Closed when the
   sprint is done.
+  - `spikes/` - throwaway scripts that answered one question each. Conclusions in
+  `docs/decisions.md`.
 
 ## Sprints
 
@@ -35,6 +39,31 @@ manager approved it, without anyone opening WhatsApp.
 Sprint 2 is the lifecycle: returns, damage photos, push notifications, and the
 manager screens the seed script currently stands in for.
 
+## Dependency hygiene
+
+Set up during the ChainDrop campaign (August 2026), when a compromised maintainer
+account published malicious versions across the keyv and cacheable namespaces
+with valid provenance signatures, so the signed "verified" badge proved nothing.
+
+- `ignore-scripts=true` in `.npmrc`. Install-time lifecycle scripts do not run,
+  which is the execution path those attacks use. Anything that genuinely needs
+  one gets `npm rebuild <pkg>` deliberately.
+- `min-release-age=7`. No package version younger than a week gets installed,
+  transitive ones included. Most malicious versions are detected and pulled
+  within hours.
+- `save-exact=true` and a committed lockfile. CI runs `npm ci`, so nothing
+  published after a commit can enter a build of that commit.
+- CI runs against emulators and holds no secrets, so a compromised dependency in
+  the pipeline has nothing to steal.
+
+If an install fails with a missing binary, that is `ignore-scripts` working.
+Run that package's script deliberately rather than removing the setting.
+
+Open audit advisories and why they are accepted: `docs/decisions.md`.
+
 ## Status
 
-Planning done. Next is Sprint 0: the spike, then the frozen data contracts.
+Sprint 0 in progress. Next app scaffolded, Vitest green in CI, Firebase emulators
+running with deny-by-default rules. The spike on the booking write is answered:
+deterministic slot IDs, no transaction needed, reasoning in `docs/decisions.md`.
+Next is freezing the data contracts and the seed script.

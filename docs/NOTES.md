@@ -174,3 +174,412 @@ to was sitting behind a deferred decision, invisible to the split.
   then that type is listed" can.
 - In the When, use "attempt to" for anything expected to fail. A When that
   asserts the outcome contradicts the Then.
+
+ ## Tests and CI
+
+### The words
+
+**Test.** A function that runs some of my code and asserts something about the
+result. If the assertion is false it throws.
+
+**Test runner.** The program that finds test files, runs them, and reports. Mine
+is Vitest. `vitest run` runs once and exits. Bare `vitest` watches and never
+exits, which hangs CI forever.
+
+**Assertion.** The claim. `expect(x).toBe(y)`. This is the line that turns a
+sentence from my acceptance criteria into something mechanical.
+
+**Kinds of test I will write here:**
+- unit: one function, no database, milliseconds
+- rules: does the emulator refuse a read or write for the wrong actor. Fast, no
+  browser, and the most important kind on a Firebase project
+- e2e (Playwright): drives a real browser through a whole journey across two
+  roles. Slow, and the only thing that proves the screens work together
+
+**CI, continuous integration.** Running the checks automatically on a machine
+that is not mine, on every push. The name is older than the practice and does
+not describe it well. What it actually is: a clean computer that runs my
+commands and reports whether they succeeded.
+
+**GitHub Actions.** GitHub's implementation of that. Free and unmetered for
+public repos on standard runners.
+
+**Workflow.** The file, `.github/workflows/ci.yml`. Says when to run and what to
+do.
+
+**Runner.** The machine. Fresh Ubuntu, empty, destroyed after the run.
+
+**Job.** A unit of work on one runner. I have one, called `test`. Multiple jobs
+run in parallel by default.
+
+**Step.** One thing inside a job. Either `run:` (a shell command) or `uses:` (a
+prebuilt action someone else wrote).
+
+**Action.** Reusable code, e.g. `actions/checkout@v7`. Pinned by major version
+so it does not change under me.
+
+### What GitHub actually reads
+
+The exit code. Nothing else.
+
+Every shell command exits with a number. Zero means success, anything else
+means failure. When my test failed, the last line of the log was
+`Process completed with exit code 1`. Everything above it, the diff, the file
+name, the caret under the assertion, is for me to read. GitHub only reads the
+number.
+
+Consequence: CI is not a testing feature. It is a "run these commands on a clean
+machine and check they all exited zero" feature. That is why the same pipeline
+will later run the linter, the rules tests and Playwright without any of them
+being special cases.
+
+Second consequence: a failed step stops the job. If `npm ci` fails, the tests
+never run, and the red is about installation, not about my code. Read which step
+went red before reading the log.
+
+### Why the runner starts empty
+
+Because that is the whole point. A machine with nothing on it cannot pass a test
+by accident.
+
+Each step adds exactly one thing:
+
+    Set up job         GitHub boots the machine
+    checkout           clones my repo onto it. Without this there is no code
+    setup-node         installs Node, and caches npm downloads between runs
+    npm ci             installs dependencies from the lockfile
+    npm test           runs vitest
+    Post Run x2        setup-node saves the cache, checkout drops credentials
+    Complete job       machine destroyed
+
+Five of those nine steps are mine, in the order I wrote them. Four are GitHub's
+setup and teardown.
+
+`npm ci`, not `npm install`. `ci` installs exactly the lockfile and fails if
+package.json disagrees. `install` resolves fresh, which would let a version
+published after my commit enter a build of that commit.
+
+### What CI proves that npm test locally does not
+
+My laptop has my Node version, my ~/.npmrc, leftover node_modules from three
+projects, and environment variables I set months ago and forgot. A test that
+passes only there passes by accident.
+
+CI removes all of that. Green on the runner means the code works from a clean
+clone, which is the only version of "works" that means anything to anyone else.
+
+It also caught a real thing today: node 24.18.0 on the runner versus 24.14.1
+locally, because `node-version: 24` means newest 24.x and drifts. Pinned it.
+Same reasoning as save-exact, applied to the runtime.
+
+What CI does not prove: composite indexes exist in the real Firebase project,
+custom claims propagate at real timing, cold starts, quotas. The emulator is
+faithful, not identical. That is why the definition of done still says deployed
+and clicked through by a human.
+
+### How a criterion becomes a file
+
+This is the last link in the pipeline in this file. The same question, "how will
+we know", asked at the most mechanical level available.
+
+From sprint-1-ac.md, story 4:
+
+    Given I am signed in as a trainer
+    When a rules test reads another trainer's booking as me
+    Then the read is refused
+
+Becomes tests/rules/bookings.test.js:
+
+    Given  -> setup: an authenticated context with uid trainer-a, role trainer
+    When   -> the call: getDoc on a booking owned by trainer-b
+    Then   -> the assertion: assertFails
+
+Given becomes setup, When becomes the call, Then becomes the assertion. No
+translation step, which is the reason to write criteria in that shape rather
+than as prose.
+
+The emulator is what makes this possible. It accepts any auth token without
+verifying signatures, so a test can claim to be any user with any role. No
+credentials anywhere. Fabricated identity, real rules file, real refusal.
+
+Which criteria this pipeline will check: all of them eventually. The rules ones
+as Vitest against the emulator, the journey ones as Playwright. The tags in
+sprint-1-ac.md already say which is which, so the test plan is written.
+
+### Evidence, 8 August
+
+- Broke the sanity test on purpose. Red locally, red on CI, exit code 1, steps
+  after it did not run. Fixed it, green again.
+- Verified the npmrc reaches the runner: printed npm config on CI and saw
+  ignore-scripts, save-exact and min-release-age all read from the project file,
+  not from a home config that does not exist there.
+- Green in 16 to 27 seconds. Playwright will be minutes, not seconds, which is a
+  reason to keep it in a separate job later.
+
+
+## Firebase Security Rules Audit Checklist
+
+
+From Firebase's own agent-skills repo (firebase-security-rules-auditor), kept
+before deleting the skill files that firebase init installed.
+
+1. Default Deny Rule
+   - Ensure default read/write access is denied (`allow read, write: if false;`) on unhandled paths.
+
+2. Authentication Checks
+   - Verify all sensitive paths require authentication (`request.auth != null`).
+   - Validate user identity matches target document (`request.auth.uid == userId`).
+
+3. Data Validation
+   - Enforce schema validation on writes (`request.resource.data`).
+   - Restrict allowed data fields to prevent unauthorized payload injection.
+
+4. Authorization & Roles
+   - Verify custom claims or role documents (`get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'`).
+   - Ensure dynamic lookups using `get()` or `exists()` are bounded to avoid high latency or costs.
+
+5. Granular Operation Checks
+   - Split `write` into distinct `create`, `update`, and `delete` rules to prevent unintended overrides or deletions.
+   - For this project: bookings get create (story 3) and update (story 5). Delete
+     is never granted to anyone. `allow write` would grant all three.
+
+
+
+
+## Firestore client SDK, first contact
+
+Everything is two steps: build a reference to a location, then act on it.
+
+    const ref = doc(db, "collection", "docId");
+    await setDoc(ref, data);
+    const snap = await getDoc(ref);
+
+`doc()` does not touch the network. It is just an address. Missing the function
+name is a silent bug: `const ref = (db, "a", "b")` is valid JavaScript, the comma
+operator, and it evaluates to the last value. So `ref` becomes the string `"b"`
+and the error surfaces later inside `setDoc`, pointing at the wrong line.
+
+`getDoc` returns a snapshot, not my data. `snap.exists()` is a function call in
+the modular API, not a property. 
+
+### The three ways to write, and one of them destroys data
+
+    setDoc(ref, data)                    replaces the ENTIRE document
+    setDoc(ref, data, { merge: true })   merges, creates if absent
+    updateDoc(ref, data)                 merges, FAILS if absent
+
+Verified: wrote seven fields, then `setDoc` with one field, and the seven were
+gone. Then `setDoc` with `{merge: true}` and the new field was added alongside.
+
+Where this would bite in this project: story 5, the manager approving a booking.
+`setDoc(bookingRef, { status: "approved" })` would erase trainerId, equipmentId,
+startTime, everything. Use `updateDoc` for a status change, and its failing on a
+missing document is a feature, since approving a booking that does not exist
+should fail.
+
+### Reading something that is not there does not throw
+
+`getDoc` on a missing path returns a snapshot with `exists()` false and `data()`
+undefined. No error. So try/catch is the wrong tool for "not found" and if/else
+is the right one. try/catch is for things that actually throw: permission denied,
+network failure, invalid reference.
+
+### One setDoc evaluates two rules
+
+The emulator Requests tab showed CREATE and UPDATE as two separate evaluations
+from one `setDoc` call, because the SDK does not know whether the document
+exists. So `allow write` grants both, and any rule that only handles create
+leaves update open or vice versa. This is the audit checklist item about
+splitting write into create, update and delete, seen happening.
+
+### Where errors appear, and where they do not
+
+Rules denials come back over the wire to the client, so they print in my terminal,
+not the emulator's. The emulator side has three places:
+
+- Emulator UI Requests tab: the best one. Shows every client request, denied ones
+  in red, and clicking one shows the rules file with the denying line highlighted,
+  plus `request.resource.data` (what I tried to write) and `resource` (the
+  document as it exists now, undefined on a create).
+- `firestore-debug.log` in the repo root, gitignored. Verbose, rarely needed.
+- The emulator terminal stays quiet on denials.
+
+The Requests tab only shows client requests. Admin SDK calls and rule-internal
+`get()` calls are invisible there because they bypass rules. So when the seed
+script runs, that tab will show nothing.
+
+### resource vs request.resource
+
+`request.resource` is what is being written. `resource` is the document as it
+currently exists. On a create, `resource` is undefined, so touching it in a create
+rule errors and denies rather than evaluating false. This is the "missing fields
+break rules" note from the schema section, and it means story 5's rule
+(`resource.data.status == "pending"`) can only ever apply to update, never create.
+
+### The error message is better locally than in production
+
+The emulator told me exactly which line denied the request:
+`false for 'create' @ L27, false for 'update' @ L27`. In production a client gets
+a bare `permission-denied` with no explanation. So rules debugging happens against
+the emulator, not against the real project.
+
+## Rules tests
+
+A different kind of test from a unit test. It needs the emulator, because the
+thing being tested is the rules file, and only the emulator can evaluate it.
+
+    initializeTestEnvironment()   reads firestore.rules and loads it into the
+                                  emulator. So the test tests the real file. Edit
+                                  the rules and the tests reflect the edit.
+    authenticatedContext("uid")   fabricates a signed-in user. No password, no
+                                  real token, the emulator accepts the claim.
+    unauthenticatedContext()      nobody signed in.
+    assertSucceeds(op)            asserts the operation was allowed.
+    assertFails(op)               asserts it was refused.
+
+`assertFails` passing means the operation was correctly denied. That inverts the
+usual meaning of a green test and it takes a second to get used to: if a rule
+accidentally allowed something, `assertFails` goes red.
+
+`clearFirestore()` in `beforeEach` means every test starts empty. That is the
+difference between a test and the spike script: the spike accumulated data across
+runs and a rerun looked like a failure, a test cannot.
+
+### Why rules specifically have to be tested
+
+A bug in a screen produces a visible error. A bug in rules produces silent data
+exposure. Nothing breaks, nobody complains, and I find out when someone notices
+they can read other people's data.
+
+And rules cannot be verified by clicking around, because the app only makes the
+requests I programmed it to make. It never tries to read another trainer's
+booking, so using the app proves nothing about whether that is blocked. Testing
+the wrong actor means deliberately making a request the app would never make,
+which is exactly what authenticatedContext is for.
+
+### Running them
+
+    npm test                 fast, but fails with ECONNREFUSED if the emulator is
+                             not already up
+    npm run test:emulator    firebase emulators:exec starts it, runs vitest, shuts
+                             it down, and exits with vitest's code
+
+The second is what CI calls, so the missing-emulator failure cannot happen there.
+It also runs the unit tests, which do not need the emulator and pay the startup
+cost. Irrelevant at 2 seconds. If the suite grows, tests/ and tests/rules/ are
+already separated so they can be split.
+
+### A failed suite is not a failed test
+
+When the emulator was down I got "5 skipped" and a failed suite, not five failed
+tests. Setup threw in beforeAll, so nothing ran. Then a second error from
+afterAll calling cleanup() on an undefined testEnv, which was a consequence, not
+a separate problem. One cause, two messages. Guarded it with testEnv?.cleanup().
+
+### The emulator needs Java
+
+The Firestore emulator is a Java program. Locally I have OpenJDK 21. CI needs
+setup-java explicitly rather than relying on whatever the runner image happens to
+ship, which is the same reasoning as pinning the Node version.
+
+
+## Admin SDK
+
+A third Firebase package, separate from `firebase` (the client SDK) and
+`firebase-tools` (the CLI). It runs on a server or in a script, never in a
+browser, which is why it is a dev dependency here.
+
+**It bypasses Security Rules entirely.** No rule evaluation, no `request.auth`,
+full read and write on everything. Two consequences:
+
+Nothing in the seed script is checked by the rules file. So the seed uses the same
+contract helpers the app will, because otherwise nothing stops a typo producing
+data the app could never have created, and I would debug the app instead of the
+seed.
+
+Admin SDK calls do not appear in the emulator UI Requests tab. That tab only shows
+client requests. So when the seed runs, the tab shows nothing, and it is no help
+for debugging why seeded data looks wrong.
+
+**Against the emulator it needs no credentials**, only two environment variables
+telling it where to connect:
+
+    process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+
+Hardcoded on purpose in the seed script. This script creates fake accounts with
+known passwords and must never run against a real project. In production it would
+need a service account key JSON, which is why `*serviceAccount*.json` is in
+`.gitignore` before such a file could exist.
+
+It emits a `MetadataLookupWarning` on startup: it tries to auto-discover
+credentials from a metadata server that only exists inside Google Cloud, fails, and
+warns. Harmless. Setting `GOOGLE_CLOUD_PROJECT` silences it.
+
+**The API shape differs from the client SDK.** Same database, two different
+libraries, and the differences are easy to trip on:
+
+    client:  doc(db, "users", uid)          admin:  db.collection("users").doc(uid)
+    client:  snap.exists()  (method)        admin:  snap.exists  (property)
+    client:  Timestamp from firebase/firestore
+    admin:   Timestamp from firebase-admin/firestore
+
+Mixing the Timestamp classes gives a type error at write time.
+
+**A user is two things in two separate systems.** Firebase Auth holds the sign-in
+identity, the password, and the custom claim that rules trust. It is not a database
+I can query or join. Firestore holds the document the app reads to show a name. The
+link is the uid, and the Firestore document id must be that same uid, or a rule
+looking up `users/{request.auth.uid}` finds nothing.
+
+So creating one user is three calls: `createUser`, `setCustomUserClaims`, and a
+Firestore `set`.
+
+**Firestore has no drop-collection.** A collection stops existing when its last
+document is deleted, so clearing means listing every document and deleting each
+one. `auth.deleteUsers()` takes an array of uids and does the Auth side.
+
+**Fixed uids rather than generated ones.** `createUser({ uid: "trainer-amina" })`
+lets me choose. Necessary because the seeded bookings reference a `trainerId`, and
+a generated uid changes on every run so nothing could point at it. Also readable
+in the emulator UI and in test assertions.
+
+## Custom claims
+
+The term is Firebase's. `setCustomUserClaims` is an Admin SDK method and rules read
+them as `request.auth.token.<key>`. The word comes from JWTs generally: a token
+carries claims, meaning statements about its bearer. Standard ones are `sub`,
+`exp`, `iat`. Custom claims are what the issuer adds beyond those.
+
+**The key and the value are mine.** `{ role: "trainer" }` could have been
+`{ type: "t" }` or `{ isManager: false }`. Firebase does not care. Which means the
+key in `setCustomUserClaims` and the key in `request.auth.token.role` must match,
+and nothing checks that they do. A typo gives a rule that silently never matches,
+which fails closed rather than open, but is still a bug that looks like a broken
+guard.
+
+`ROLE_CLAIM` and `ROLES` live in `lib/contract.js` so the value exists once on the
+JavaScript side. The rules file cannot import it, since rules are their own
+language with no imports, so the correspondence stays manual. What closes the gap
+is a rules test: if the key ever disagrees, the test fails.
+
+**Why the role is duplicated into Firestore at all.** A rule reading the claim uses
+`request.auth.token.role`, which is free, because the claim is already inside the
+verified token. A rule reading the Firestore copy would need
+`get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role`, which
+costs a document read on every single evaluation and counts against a per-request
+limit. So the claim is what rules trust and the Firestore field is for the UI.
+
+**Claims are not visible in the emulator UI.** The Authentication tab shows
+identifier, provider, dates and uid, and no claims column. The only ways to check
+one are `auth.getUserByEmail(email).customClaims` from the Admin SDK, or reading
+the token on the client after signing in. Worth confirming rather than assuming,
+because if `setCustomUserClaims` had silently done nothing I would have found out
+while debugging a route guard and suspected the guard.
+
+**They only refresh when the token does.** Setting a claim does not affect a
+signed-in user until their ID token refreshes, roughly hourly, or on a forced
+refresh. So a role change is not instant. Not a problem here because roles are set
+at seed time, but it is the classic surprise.
+
+**1000 byte limit.** Claims are for a role or a flag, not for data.
