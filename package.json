@@ -7,7 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "dependencies": {
     "firebase": "12.17.0",
@@ -21,6 +23,7 @@
     "eslint-config-next": "16.2.12",
     "firebase-tools": "15.25.1",
     "postcss": "^8.5.6",
+    "prettier": "3.9.6",
     "tailwindcss": "^3.4.19",
     "vitest": "4.1.10"
   }

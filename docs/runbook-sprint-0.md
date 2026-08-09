@@ -1,5 +1,10 @@
 # Sprint 0 runbook
 
+Sprint 0 exists to make Sprint 1 startable: infrastructure that lets a story be
+tested, a settled mechanism for the risky part, and frozen contracts so two
+people could build in parallel. The split document is the last thing out, not
+the point.
+
 Steps in order. One open at a time alongside NOTES.md. Close this when Sprint 0
 is done.
 
@@ -15,7 +20,8 @@ is done.
    waits for it:
    - booking document shape, frozen, in a file both lanes import
    - availability structure shape, frozen, output of step 3
-   - firestore.rules skeleton, deny by default, one match block per collection
+ - firestore.rules: add a match block for the availability structure if the
+     spike creates a new collection. The skeleton landed 8 August.
    - seed.js: 2 managers, 3 trainers with claims, types, equipment, and 3
      pending bookings, plus whatever the availability structure needs
    - firestore.indexes.json, empty but committed
