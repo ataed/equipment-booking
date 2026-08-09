@@ -481,3 +481,105 @@ a separate problem. One cause, two messages. Guarded it with testEnv?.cleanup().
 The Firestore emulator is a Java program. Locally I have OpenJDK 21. CI needs
 setup-java explicitly rather than relying on whatever the runner image happens to
 ship, which is the same reasoning as pinning the Node version.
+
+
+## Admin SDK
+
+A third Firebase package, separate from `firebase` (the client SDK) and
+`firebase-tools` (the CLI). It runs on a server or in a script, never in a
+browser, which is why it is a dev dependency here.
+
+**It bypasses Security Rules entirely.** No rule evaluation, no `request.auth`,
+full read and write on everything. Two consequences:
+
+Nothing in the seed script is checked by the rules file. So the seed uses the same
+contract helpers the app will, because otherwise nothing stops a typo producing
+data the app could never have created, and I would debug the app instead of the
+seed.
+
+Admin SDK calls do not appear in the emulator UI Requests tab. That tab only shows
+client requests. So when the seed runs, the tab shows nothing, and it is no help
+for debugging why seeded data looks wrong.
+
+**Against the emulator it needs no credentials**, only two environment variables
+telling it where to connect:
+
+    process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
+    process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
+
+Hardcoded on purpose in the seed script. This script creates fake accounts with
+known passwords and must never run against a real project. In production it would
+need a service account key JSON, which is why `*serviceAccount*.json` is in
+`.gitignore` before such a file could exist.
+
+It emits a `MetadataLookupWarning` on startup: it tries to auto-discover
+credentials from a metadata server that only exists inside Google Cloud, fails, and
+warns. Harmless. Setting `GOOGLE_CLOUD_PROJECT` silences it.
+
+**The API shape differs from the client SDK.** Same database, two different
+libraries, and the differences are easy to trip on:
+
+    client:  doc(db, "users", uid)          admin:  db.collection("users").doc(uid)
+    client:  snap.exists()  (method)        admin:  snap.exists  (property)
+    client:  Timestamp from firebase/firestore
+    admin:   Timestamp from firebase-admin/firestore
+
+Mixing the Timestamp classes gives a type error at write time.
+
+**A user is two things in two separate systems.** Firebase Auth holds the sign-in
+identity, the password, and the custom claim that rules trust. It is not a database
+I can query or join. Firestore holds the document the app reads to show a name. The
+link is the uid, and the Firestore document id must be that same uid, or a rule
+looking up `users/{request.auth.uid}` finds nothing.
+
+So creating one user is three calls: `createUser`, `setCustomUserClaims`, and a
+Firestore `set`.
+
+**Firestore has no drop-collection.** A collection stops existing when its last
+document is deleted, so clearing means listing every document and deleting each
+one. `auth.deleteUsers()` takes an array of uids and does the Auth side.
+
+**Fixed uids rather than generated ones.** `createUser({ uid: "trainer-amina" })`
+lets me choose. Necessary because the seeded bookings reference a `trainerId`, and
+a generated uid changes on every run so nothing could point at it. Also readable
+in the emulator UI and in test assertions.
+
+## Custom claims
+
+The term is Firebase's. `setCustomUserClaims` is an Admin SDK method and rules read
+them as `request.auth.token.<key>`. The word comes from JWTs generally: a token
+carries claims, meaning statements about its bearer. Standard ones are `sub`,
+`exp`, `iat`. Custom claims are what the issuer adds beyond those.
+
+**The key and the value are mine.** `{ role: "trainer" }` could have been
+`{ type: "t" }` or `{ isManager: false }`. Firebase does not care. Which means the
+key in `setCustomUserClaims` and the key in `request.auth.token.role` must match,
+and nothing checks that they do. A typo gives a rule that silently never matches,
+which fails closed rather than open, but is still a bug that looks like a broken
+guard.
+
+`ROLE_CLAIM` and `ROLES` live in `lib/contract.js` so the value exists once on the
+JavaScript side. The rules file cannot import it, since rules are their own
+language with no imports, so the correspondence stays manual. What closes the gap
+is a rules test: if the key ever disagrees, the test fails.
+
+**Why the role is duplicated into Firestore at all.** A rule reading the claim uses
+`request.auth.token.role`, which is free, because the claim is already inside the
+verified token. A rule reading the Firestore copy would need
+`get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role`, which
+costs a document read on every single evaluation and counts against a per-request
+limit. So the claim is what rules trust and the Firestore field is for the UI.
+
+**Claims are not visible in the emulator UI.** The Authentication tab shows
+identifier, provider, dates and uid, and no claims column. The only ways to check
+one are `auth.getUserByEmail(email).customClaims` from the Admin SDK, or reading
+the token on the client after signing in. Worth confirming rather than assuming,
+because if `setCustomUserClaims` had silently done nothing I would have found out
+while debugging a route guard and suspected the guard.
+
+**They only refresh when the token does.** Setting a claim does not affect a
+signed-in user until their ID token refreshes, roughly hourly, or on a forced
+refresh. So a role change is not instant. Not a problem here because roles are set
+at seed time, but it is the classic surprise.
+
+**1000 byte limit.** Claims are for a role or a flag, not for data.
