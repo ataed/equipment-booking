@@ -161,3 +161,19 @@ Function with the Admin SDK. Whichever it is, the release path and the claim pat
 must be owned by the same module.
 
 The same question covers cancel and the scheduled auto-refuse, both Sprint 2.
+
+
+## 2026-08-09 No proxy.js, client-side route protection only
+
+Firebase Auth stores the session in IndexedDB, so a server-side proxy cannot see
+who is signed in. Making it work needs a session cookie minted by a route handler
+using the Admin SDK, plus refresh handling, plus a new failure mode where the
+cookie and the live session disagree.
+
+Rejected for Sprint 1. A route guard stops someone seeing a page; Security Rules
+stop someone getting data, and an empty page is not a leak. Next renamed
+middleware to proxy in v16 to signal the same thing: it is routing
+infrastructure, not a security boundary.
+
+Cost: a brief loading flash before the redirect, and no protection for
+server-rendered data fetching. Revisit if a screen needs server-side data.

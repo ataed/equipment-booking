@@ -2,20 +2,27 @@
 @tailwind components;
 @tailwind utilities;
 
+
 :root {
   --background: #ffffff;
-  --foreground: #171717;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --foreground: #1a1a1a;
+  --muted: #6b7280;
+  --border: #d1d5db;
+  --danger: #b91c1c;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+}
+
+@layer components {
+  .field {
+    @apply w-full rounded border border-border px-3 py-2.5 text-base;
+  }
+
+  .btn {
+    @apply w-full rounded bg-foreground px-4 py-2.5 text-base text-background disabled:opacity-50;
+  }
 }
