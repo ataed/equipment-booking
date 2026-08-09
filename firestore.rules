@@ -22,6 +22,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
+    // Slot occupancy. Existence means taken. Created only, never modified or
+    // deleted, which is what makes the create atomic. See decisions.md.
+    match /slots/{slotId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update, delete: if false;
+    }
+
     // Catch-all. Any collection not named above is denied outright.
     match /{document=**} {
       allow read, write: if false;

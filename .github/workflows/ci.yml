@@ -16,5 +16,9 @@ jobs:
         with:
           node-version: 24.14.1
           cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
       - run: npm ci
-      - run: npm test
+      - run: npm run test:emulator

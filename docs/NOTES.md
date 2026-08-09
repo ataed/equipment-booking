@@ -422,3 +422,62 @@ The emulator told me exactly which line denied the request:
 `false for 'create' @ L27, false for 'update' @ L27`. In production a client gets
 a bare `permission-denied` with no explanation. So rules debugging happens against
 the emulator, not against the real project.
+
+## Rules tests
+
+A different kind of test from a unit test. It needs the emulator, because the
+thing being tested is the rules file, and only the emulator can evaluate it.
+
+    initializeTestEnvironment()   reads firestore.rules and loads it into the
+                                  emulator. So the test tests the real file. Edit
+                                  the rules and the tests reflect the edit.
+    authenticatedContext("uid")   fabricates a signed-in user. No password, no
+                                  real token, the emulator accepts the claim.
+    unauthenticatedContext()      nobody signed in.
+    assertSucceeds(op)            asserts the operation was allowed.
+    assertFails(op)               asserts it was refused.
+
+`assertFails` passing means the operation was correctly denied. That inverts the
+usual meaning of a green test and it takes a second to get used to: if a rule
+accidentally allowed something, `assertFails` goes red.
+
+`clearFirestore()` in `beforeEach` means every test starts empty. That is the
+difference between a test and the spike script: the spike accumulated data across
+runs and a rerun looked like a failure, a test cannot.
+
+### Why rules specifically have to be tested
+
+A bug in a screen produces a visible error. A bug in rules produces silent data
+exposure. Nothing breaks, nobody complains, and I find out when someone notices
+they can read other people's data.
+
+And rules cannot be verified by clicking around, because the app only makes the
+requests I programmed it to make. It never tries to read another trainer's
+booking, so using the app proves nothing about whether that is blocked. Testing
+the wrong actor means deliberately making a request the app would never make,
+which is exactly what authenticatedContext is for.
+
+### Running them
+
+    npm test                 fast, but fails with ECONNREFUSED if the emulator is
+                             not already up
+    npm run test:emulator    firebase emulators:exec starts it, runs vitest, shuts
+                             it down, and exits with vitest's code
+
+The second is what CI calls, so the missing-emulator failure cannot happen there.
+It also runs the unit tests, which do not need the emulator and pay the startup
+cost. Irrelevant at 2 seconds. If the suite grows, tests/ and tests/rules/ are
+already separated so they can be split.
+
+### A failed suite is not a failed test
+
+When the emulator was down I got "5 skipped" and a failed suite, not five failed
+tests. Setup threw in beforeAll, so nothing ran. Then a second error from
+afterAll calling cleanup() on an undefined testEnv, which was a consequence, not
+a separate problem. One cause, two messages. Guarded it with testEnv?.cleanup().
+
+### The emulator needs Java
+
+The Firestore emulator is a Java program. Locally I have OpenJDK 21. CI needs
+setup-java explicitly rather than relying on whatever the runner image happens to
+ship, which is the same reasoning as pinning the Node version.
