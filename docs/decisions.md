@@ -46,9 +46,13 @@ report fixes as available that cannot be installed yet. Both accepted.
 
 ## 2026-08-08 Accepted four open audit advisories
 
-nanoid: the fix is 3.3.17, published 3 August, inside the 7-day cooldown. So
-audit reports a fix as available and `audit fix` cannot apply it. Resolves itself
-around 10 August. Not exposed meanwhile, the bug needs nanoid(0).
+nanoid: resolved 10 August. The fix (3.3.17, published 3 August) fell outside the
+cooldown once the rolling window reached it. Three production advisories remain,
+postcss and sharp, both nested under next, both unchanged.
+
+**note**: The cooldown is a rolling window. `npm audit` reports a fix as available while
+`audit fix` cannot apply it, because audit does not know about `before`. It
+resolves itself when the window reaches the fix.
 
 postcss: my direct dependency is 8.5.25, which is not in the vulnerable range.
 The vulnerable copy is next@16.2.12's own bundled postcss@8.4.31, so it can only

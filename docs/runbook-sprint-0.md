@@ -48,9 +48,6 @@ the layers habit.
 
 ## Waiting on
 
-- Around 10 August: rerun `npm audit fix`. The nanoid fix (3.3.17, published
-  3 August) falls outside the 7-day cooldown then.
-
 - Playwright: one end to end test after story 5, covering the whole loop across
   both roles. Needs the dev server, the emulator and seeded data, so it goes in
   its own CI job.
