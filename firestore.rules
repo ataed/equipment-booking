@@ -10,12 +10,14 @@ service cloud.firestore {
       allow read, write: if false;
     }
 
-    match /types/{typeId} {
-      allow read, write: if false;
+      match /types/{typeId} {
+      allow read: if request.auth != null;
+      allow write: if false;
     }
 
     match /equipment/{equipmentId} {
-      allow read, write: if false;
+      allow read: if request.auth != null;
+      allow write: if false;
     }
 
     match /bookings/{bookingId} {
