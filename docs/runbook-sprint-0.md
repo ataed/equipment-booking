@@ -31,13 +31,15 @@ is done.
    - Playwright: **not done.** Deferred to story 1, because an end to end test
      needs a page worth testing and asserting on the default Next page proves
      nothing.
-6. `docs/work-split.md`. **Deferred until after story 1.** Drafted and not
-   committed. I have not built a Next plus Firebase app before, so I cannot say
-   which files a story actually touches or where two people would tread on each
-   other. Reasoning about ownership of directories that do not exist yet produces
-   a document I cannot defend, and committing one I cannot explain is worse than
-   not having it. Story 1 makes it concrete.
-7. Story 1.
+6. ~~`docs/work-split.md`.~~ Done 10 August, after story 1 rather than before.
+   Built the file table first: what each story creates, edits, reads and writes —
+   then read the lanes off it. Three collision points and nothing else:
+   `firestore.rules` in all four stories, `app/trainer/page.js` in two, and
+   `lib/slots/` in two.
+7. ~~Story 1.~~ Done 9 August. Four of five criteria; criterion 4 needs a
+   manager-only document, which does not exist until story 5.
+
+**Sprint 0 closed.** Sprint 1 in progress on three lane branches.
 
 While on a story, no file gets created unless that story needs it to pass its
 own criteria today. Story 1 is sign-in: no bookings collection, no booking
@@ -49,13 +51,19 @@ the layers habit.
 - Around 10 August: rerun `npm audit fix`. The nanoid fix (3.3.17, published
   3 August) falls outside the 7-day cooldown then.
 
-- Story 1, then: write `docs/work-split.md` against the file layout that actually
-  exists. What is already settled and does not depend on the layout: the
-  dependency order, that the seeded pending bookings let the approve screen be
-  built without waiting for the booking write, that `lib/contract.js` is frozen
-  before any lane starts, and that `firestore.rules` needs a single owner because
-  every story modifies it. What is uncertain is only the paths.
+- Playwright: one end to end test after story 5, covering the whole loop across
+  both roles. Needs the dev server, the emulator and seeded data, so it goes in
+  its own CI job.
+
+- After Sprint 1: deploy to Vercel with a real Firebase project as staging. That
+  is where composite indexes, claim propagation timing and cold starts show up,
+  none of which the emulator proves.
 
 - Story 5: decide how a slot is released when a booking is refused. Three known
   options, no spike needed. Deferred because building stories 1 to 4 will make
   the choice clearer.
+
+- Sprint 2 note: Cloud Storage requires the Blaze plan since February 2026, so the
+  damage-photo story needs a billing account attached even though usage stays
+  within the free quota. Cloud Functions too, which affects the scheduled
+  auto-refuse. Another argument for Sprint 2 being the cuttable half.
