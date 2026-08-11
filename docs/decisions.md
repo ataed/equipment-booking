@@ -181,3 +181,37 @@ infrastructure, not a security boundary.
 
 Cost: a brief loading flash before the redirect, and no protection for
 server-rendered data fetching. Revisit if a screen needs server-side data.
+
+
+
+## 2026-08-10 Refusing a booking is two operations, not one
+
+Refusing writes the booking's status and then releases its slots. Two writes, not
+one batch.
+
+Why not a batch: releaseSlots lives in lib/slots/claim.js and commits its own,
+because slots have a single write path owned by one module. That is what stops
+slots and bookings drifting, and it is worth more than atomicity here.
+
+Cost accepted: if the release fails after the status write succeeds, the booking
+reads refused while its slots are still held, so the device stays blocked by a
+booking nobody has. Both writes are small and adjacent, which makes the window
+narrow but not zero.
+
+Reversal condition: if this happens in practice, move refusal into a Cloud
+Function using the Admin SDK, which can do both in one transaction. Not now.
+
+## 2026-08-11 Test files run sequentially
+
+`fileParallelism: false` in vitest.config.mjs. Vitest runs files in parallel by
+default, they all share one emulator, and each calls clearFirestore in beforeEach,
+so one file wipes another's data mid-test. Found it as 7 failures locally and 8 in
+CI on the same commit.
+
+The alternative is a distinct projectId per test file, which gives isolation and
+keeps parallelism. Rejected for now because it means editing three test files owned
+by three different lanes, and because it relies on every future file remembering to
+set one. Sequential is one line in a file nobody owns and it applies automatically.
+
+Cost: slower as the suite grows. Currently 4 files and about 3 seconds. Revisit past
+roughly 20 files, and do it as one deliberate pass rather than lane by lane.

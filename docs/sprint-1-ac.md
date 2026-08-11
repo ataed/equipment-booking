@@ -227,6 +227,14 @@ history.
    When I open my bookings screen
    Then I see an empty state, not an error
 
+6. Given I am signed in as a trainer
+   When a rules test queries bookings narrowed to another trainer's uid
+   Then the query is refused
+
+Criterion 6 is what stops criterion 4 being misread. Without it I could conclude
+that any where clause satisfies the rule, when the constraint has to match what the
+rule permits, not merely exist.
+
 Criteria 2 and 3 are the pair that matters. 2 is the screen, 3 is the rule. A
 screen that filters client side passes 2 and fails 3, and that is the bug.
 
@@ -261,8 +269,8 @@ have to tell them in WhatsApp.
 
 1. Given pending, approved and refused bookings exist
    When I open the pending list
-   Then only the pending ones are listed, each showing which trainer requested
-        it, the equipment assigned and the slot
+   Then only the pending ones are listed, each showing the trainer's name and
+        email, the equipment assigned and the slot
 
 2. Given a pending booking
    When I approve it
@@ -286,6 +294,13 @@ have to tell them in WhatsApp.
    When I open the pending list
    Then I see an empty state, not an error
 
+7. Given I am signed in as a manager
+   When a rules test reads any trainer's booking as me
+   Then the read is allowed
+
+Criterion 1 is about the screen. This is the rule underneath it, and without it the
+pending list would work only because nothing had tested whether it was permitted.
+
 Criterion 3's second line matters. Pending and approved hold a slot, refused
 does not, so refusing has to release the device or a refused request blocks it
 forever and the auto-refuse story in Sprint 2 becomes pointless.
@@ -307,10 +322,9 @@ defeats the whole approval workflow.
 bookings so this can be built in parallel with story 4
 **Blocks:** nothing in Sprint 1
 
-**Open**
+**Closed 10 August**
 
-- Duplicate trainer names. The centre has 14 trainers and the manager creates
-  the accounts, so two people with the same name is plausible. If the row shows
-  only a name I cannot tell them apart, which makes criterion 1 uncheckable.
-  Either the seed data uses distinct names or the row shows the email too.
-  Decide before building the list.
+- Duplicate trainer names. The row shows the email as well as the name. Two
+  trainers can share a name and the manager creates the accounts, so a name alone
+  would leave criterion 1 uncheckable. Email is unique by definition, so it is the
+  cheapest thing that makes the row identifiable.
