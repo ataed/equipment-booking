@@ -583,3 +583,16 @@ refresh. So a role change is not instant. Not a problem here because roles are s
 at seed time, but it is the classic surprise.
 
 **1000 byte limit.** Claims are for a role or a flag, not for data.
+
+## Rules only see what you check
+
+A rule that validates the field it cares about and nothing else permits every other
+field to change alongside it. `allow update: if isManager() && newStatus in [...]`
+lets a manager rewrite trainerId and equipmentId in the same call, because the rule
+never looked.
+
+`request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])` is
+the fix: the update is permitted only if status is the only field that differs.
+
+The general shape: a rule is a whitelist of what may change, not a check on the
+thing you happened to think about.
