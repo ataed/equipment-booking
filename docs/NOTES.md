@@ -584,7 +584,6 @@ at seed time, but it is the classic surprise.
 
 **1000 byte limit.** Claims are for a role or a flag, not for data.
 
-
 ## Rules are not filters
 
 The biggest difference from RLS, and the one most likely to bite me.
@@ -624,3 +623,17 @@ from the verified token and cannot be forged.
 It also means a rule can never hide a field. A document is readable or not. That is
 why slot occupancy lives in its own collection with no owner on it: the trainer
 needs one fact out of a booking he is not allowed to open.
+
+## Rules only see what you check
+
+A rule that validates the field it cares about and nothing else permits every other
+field to change alongside it. `allow update: if isManager() && newStatus in [...]`
+lets a manager rewrite trainerId and equipmentId in the same call, because the rule
+never looked.
+
+`request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])` is
+the fix: the update is permitted only if status is the only field that differs.
+
+The general shape: a rule is a whitelist of what may change, not a check on the
+thing you happened to think about.
+

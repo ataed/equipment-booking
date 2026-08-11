@@ -79,6 +79,20 @@ book without asking the manager.
    When a rules test reads the equipment collection
    Then the read is refused
 
+5. Given I am signed in as a trainer
+   When a rules test writes to the equipment collection as me
+   Then the write is refused
+
+6. Given I am signed in as a trainer
+   When a rules test writes to the types collection as me
+   Then the write is refused
+
+Criteria 5 and 6 were not in the first draft. They came from asking what happens to
+the other operation and the other collection while writing the tests. Nothing in
+this app writes types or equipment from a client: the manager's add and remove
+screens are Sprint 2 stories and even then would be manager only. Asserting it now
+means a later rule cannot loosen it without a test going red.
+
 Criterion 2 shows the type instead of hiding it. Hiding is simpler, but the
 story exists so the trainer stops asking the manager, and hiding a broken
 projector means he asks whether the centre owns one.
@@ -86,7 +100,8 @@ projector means he asks whether the centre owns one.
 **Tasks**
 
 - Query types, then check each has at least one in-service device
-- Rules: read allowed to any signed-in user, writes manager only
+- Rules: read allowed to any signed-in user, writes denied to everyone. Manager
+  writes arrive with the Sprint 2 equipment screens.
 
 **Depends on:** story 1, Sprint 0 seeded equipment and types
 **Blocks:** story 3

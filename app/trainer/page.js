@@ -21,6 +21,9 @@ function TrainerHome() {
       <p className="mt-1 text-sm text-muted">{user.email}</p>
 
       <nav className="mt-6 flex flex-col gap-2">
+        <Link href="/trainer/equipment" className="underline">
+          Voir le matériel
+        </Link>
         <Link href="/trainer/my-bookings" className="underline">
           Mes réservations
         </Link>
