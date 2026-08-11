@@ -246,8 +246,8 @@ have to tell them in WhatsApp.
 
 1. Given pending, approved and refused bookings exist
    When I open the pending list
-   Then only the pending ones are listed, each showing which trainer requested
-        it, the equipment assigned and the slot
+   Then only the pending ones are listed, each showing the trainer's name and
+        email, the equipment assigned and the slot
 
 2. Given a pending booking
    When I approve it
@@ -292,10 +292,9 @@ defeats the whole approval workflow.
 bookings so this can be built in parallel with story 4
 **Blocks:** nothing in Sprint 1
 
-**Open**
+**Closed 10 August**
 
-- Duplicate trainer names. The centre has 14 trainers and the manager creates
-  the accounts, so two people with the same name is plausible. If the row shows
-  only a name I cannot tell them apart, which makes criterion 1 uncheckable.
-  Either the seed data uses distinct names or the row shows the email too.
-  Decide before building the list.
+- Duplicate trainer names. The row shows the email as well as the name. Two
+  trainers can share a name and the manager creates the accounts, so a name alone
+  would leave criterion 1 uncheckable. Email is unique by definition, so it is the
+  cheapest thing that makes the row identifiable.

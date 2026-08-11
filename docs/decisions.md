@@ -181,3 +181,22 @@ infrastructure, not a security boundary.
 
 Cost: a brief loading flash before the redirect, and no protection for
 server-rendered data fetching. Revisit if a screen needs server-side data.
+
+
+
+## 2026-08-10 Refusing a booking is two operations, not one
+
+Refusing writes the booking's status and then releases its slots. Two writes, not
+one batch.
+
+Why not a batch: releaseSlots lives in lib/slots/claim.js and commits its own,
+because slots have a single write path owned by one module. That is what stops
+slots and bookings drifting, and it is worth more than atomicity here.
+
+Cost accepted: if the release fails after the status write succeeds, the booking
+reads refused while its slots are still held, so the device stays blocked by a
+booking nobody has. Both writes are small and adjacent, which makes the window
+narrow but not zero.
+
+Reversal condition: if this happens in practice, move refusal into a Cloud
+Function using the Admin SDK, which can do both in one transaction. Not now.
