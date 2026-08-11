@@ -212,6 +212,14 @@ history.
    When I open my bookings screen
    Then I see an empty state, not an error
 
+6. Given I am signed in as a trainer
+   When a rules test queries bookings narrowed to another trainer's uid
+   Then the query is refused
+
+Criterion 6 is what stops criterion 4 being misread. Without it I could conclude
+that any where clause satisfies the rule, when the constraint has to match what the
+rule permits, not merely exist.
+
 Criteria 2 and 3 are the pair that matters. 2 is the screen, 3 is the rule. A
 screen that filters client side passes 2 and fails 3, and that is the bug.
 
@@ -270,6 +278,13 @@ have to tell them in WhatsApp.
 6. Given there are no pending bookings
    When I open the pending list
    Then I see an empty state, not an error
+
+7. Given I am signed in as a manager
+   When a rules test reads any trainer's booking as me
+   Then the read is allowed
+
+Criterion 1 is about the screen. This is the rule underneath it, and without it the
+pending list would work only because nothing had tested whether it was permitted.
 
 Criterion 3's second line matters. Pending and approved hold a slot, refused
 does not, so refusing has to release the device or a refused request blocks it
