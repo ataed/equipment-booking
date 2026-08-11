@@ -15,7 +15,7 @@ process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
 
 import { initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
-import { getFirestore, Timestamp } from "firebase-admin/firestore";
+import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import {
   ROLES,
   BOOKING_STATUS,
@@ -38,7 +38,11 @@ const db = getFirestore();
 // makes them readable in the emulator UI and in test assertions.
 const TRAINERS = [
   { uid: "trainer-amina", email: "amina@almanar.test", name: "Amina Benali" },
-  { uid: "trainer-youssef", email: "youssef@almanar.test", name: "Youssef Alami" },
+  {
+    uid: "trainer-youssef",
+    email: "youssef@almanar.test",
+    name: "Youssef Alami",
+  },
   { uid: "trainer-karim", email: "karim@almanar.test", name: "Karim Tazi" },
 ];
 
@@ -46,8 +50,16 @@ const TRAINERS = [
 // is away one week a month and approving is useless without the storeroom key,
 // so the second person needs identical permissions. See questions.md item 1.
 const MANAGERS = [
-  { uid: "manager-rachid", email: "rachid@almanar.test", name: "Rachid Benali" },
-  { uid: "manager-samira", email: "samira@almanar.test", name: "Samira Idrissi" },
+  {
+    uid: "manager-rachid",
+    email: "rachid@almanar.test",
+    name: "Rachid Benali",
+  },
+  {
+    uid: "manager-samira",
+    email: "samira@almanar.test",
+    name: "Samira Idrissi",
+  },
 ];
 
 const PASSWORD = "test1234";
@@ -65,13 +77,25 @@ const TYPES = [
 // candidate to be worth testing. One camera out of service on purpose: story 2
 // criterion 2 needs a type where every device is unavailable.
 const EQUIPMENT = [
-  { id: "projector-1", typeId: "projector", status: EQUIPMENT_STATUS.IN_SERVICE },
-  { id: "projector-2", typeId: "projector", status: EQUIPMENT_STATUS.IN_SERVICE },
-  { id: "projector-3", typeId: "projector", status: EQUIPMENT_STATUS.IN_SERVICE },
+  {
+    id: "projector-1",
+    typeId: "projector",
+    status: EQUIPMENT_STATUS.IN_SERVICE,
+  },
+  {
+    id: "projector-2",
+    typeId: "projector",
+    status: EQUIPMENT_STATUS.IN_SERVICE,
+  },
+  {
+    id: "projector-3",
+    typeId: "projector",
+    status: EQUIPMENT_STATUS.IN_SERVICE,
+  },
   { id: "laptop-1", typeId: "laptop", status: EQUIPMENT_STATUS.IN_SERVICE },
   { id: "laptop-2", typeId: "laptop", status: EQUIPMENT_STATUS.IN_SERVICE },
   { id: "tablet-1", typeId: "tablet", status: EQUIPMENT_STATUS.IN_SERVICE },
-  { id: "camera-1", typeId: "camera", status: EQUIPMENT_STATUS.OUT_OF_SERVICE},
+  { id: "camera-1", typeId: "camera", status: EQUIPMENT_STATUS.OUT_OF_SERVICE },
 ];
 
 // Tomorrow, so the bookings are always in the future however long the emulator
@@ -147,7 +171,14 @@ async function clear() {
 async function createUser({ uid, email, name, role }) {
   await auth.createUser({ uid, email, password: PASSWORD, displayName: name });
   await auth.setCustomUserClaims(uid, { role });
-  await db.collection("users").doc(uid).set({ name, email, role });
+  await db.collection("users").doc(uid).set({
+    name,
+    email,
+    role,
+    // Rules cannot query, so this is what the booking cap rule reads. Every user
+    // starts at 0 and the three seeded bookings below bring three trainers to 1.
+    activeBookings: 0,
+  });
 }
 
 // A booking and its slots are written together. Every hour the booking occupies
@@ -165,13 +196,17 @@ async function createBooking(b) {
   const endTime = new Date(b.startTime);
   endTime.setHours(endTime.getHours() + b.durationHours);
 
-  const slotIds = slotIdsForBooking(b.equipmentId, b.startTime, b.durationHours);
+  const slotIds = slotIdsForBooking(
+    b.equipmentId,
+    b.startTime,
+    b.durationHours
+  );
 
   for (const slotId of slotIds) {
     const existing = await db.collection("slots").doc(slotId).get();
     if (existing.exists) {
       throw new Error(
-        `${b.id} wants slot ${slotId}, already held by ${existing.data().bookingId}`,
+        `${b.id} wants slot ${slotId}, already held by ${existing.data().bookingId}`
       );
     }
   }
@@ -184,6 +219,11 @@ async function createBooking(b) {
     equipmentId: b.equipmentId,
     startTime: Timestamp.fromDate(b.startTime),
     endTime: Timestamp.fromDate(endTime),
+    // Plain numbers alongside the timestamps, because rules evaluate timestamp
+    // methods in UTC and Morocco is UTC+1. A rule reading startTime.hours() would
+    // see 13 for a 14:00 booking. See decisions.md.
+    startHour: b.startTime.getHours(),
+    durationHours: b.durationHours,
     status: BOOKING_STATUS.PENDING,
     createdAt: Timestamp.now(),
     returnedAt: null,
@@ -201,6 +241,13 @@ async function createBooking(b) {
   }
 
   await batch.commit();
+  // The seeded bookings are pending, which counts as active. Without this the
+  // counter says 0 while the trainer has a booking, so their next attempt would be
+  // treated as their first rather than their second.
+  await db
+    .collection("users")
+    .doc(b.trainerId)
+    .update({ activeBookings: FieldValue.increment(1) });
   return slotIds;
 }
 
