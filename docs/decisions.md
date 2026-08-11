@@ -215,3 +215,50 @@ set one. Sequential is one line in a file nobody owns and it applies automatical
 
 Cost: slower as the suite grows. Currently 4 files and about 3 seconds. Revisit past
 roughly 20 files, and do it as one deliberate pass rather than lane by lane.
+
+
+## 2026-08-11 The two-booking cap is enforced through a counter, not a query
+
+Story 3 criterion 5: a trainer with 2 active bookings is refused a third. Rules
+cannot query, so no rule can count a trainer's bookings. There is no version of
+firestore.rules that enforces this against the bookings collection.
+
+Chosen: a counter on the user document. users/{uid}.activeBookings, and the rule
+allows the owner to increment by exactly 1 and only up to 2. The booking and the
+increment go in the same batch, so a trainer at the cap has the whole batch refused in
+the rule rather than in JavaScript.
+
+Rejected a Cloud Function using the Admin SDK, which can query. It requires the Blaze
+plan, meaning a card on file. Usage would stay inside the free quota, but deployments
+incur small storage charges for the container, and it puts a cold start in the booking
+path. The Admin SDK is already used where it is genuinely needed, in scripts/seed.mjs
+and in the rules tests.
+
+Rejected client-side only. The brief is specifically that rules do the blocking, and a
+criterion that reads as enforced while being advisory is worse than an honest one.
+
+Cost accepted: the counter can drift. Nothing recomputes it, so a bug that increments
+without creating a booking leaves a trainer stuck or over their cap. It also couples
+dev C to it: refusing has to decrement.
+
+Reversal condition: if the counter drifts in practice, move booking creation into a
+Cloud Function that counts by querying.
+
+## 2026-08-11 startHour and durationHours as plain numbers on the booking
+
+Security Rules evaluate timestamp methods in UTC. Morocco is UTC+1, so a 14:00 local
+booking has startTime.hours() == 13 inside a rule. Validating the centre's 08:00 to
+18:00 against that is off by one, and hardcoding a +1 offset breaks twice a year with
+DST.
+
+So the rule validates startHour and durationHours, plain numbers carrying the local
+hour with no timezone in the way. minutes() and seconds() are used directly, because
+those do not shift with offset.
+
+Same trap as toISOString() in lib/contract.js, which converts to UTC and would produce
+a slot ID for the wrong hour. Second occurrence of one mistake.
+
+Cost: startHour duplicates what startTime already says. Written once at creation,
+never updated, and a booking is immutable except for status. Dev C computes duration
+from endTime minus startTime instead, so there are two ways to get the same number.
+The fields are authoritative, because the rule reads them.

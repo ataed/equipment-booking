@@ -177,23 +177,32 @@ you cannot drive a real race through a browser.
 - Owner taken from the verified token, never from the request body
 - Server-recorded creation time
 
-**Depends on:** story 2, the Sprint 0 spike, the fixed-slots decision
-**Blocks:** stories 4 and 5
 
-**Deferred to the spike**
+**Resolved by the spike, 9 August**
 
-Showing the trainer which slots are already taken needs a structure he is
-allowed to read with no owner on it, since bookings carry the trainer id and
-stay private to their owner. Rules cannot hide fields, so the fact has to exist
-somewhere else. That structure is probably the same one that makes the
-assignment atomic. The spike decides its shape and this story gets one more
-criterion afterwards.
+The structure is the `slots` collection: one document per device per hour, ID
+`{deviceId}_{isoHour}`, one field `bookingId`, never a trainerId. Readable by any
+signed-in user precisely because it carries no owner. See decisions.md.
+
+So showing the trainer which hours are taken is now possible. Whether the form does
+it is a separate decision, below.
+
+**Closed 11 August**
+
+- "Active" in criterion 5. Defined by the `activeBookings` counter on the user
+  document, not by counting statuses, because rules cannot query. Incremented when a
+  booking is created, decremented when a manager refuses. So active means "counted",
+  and keeping that in step with reality is the counter's known cost. See
+  decisions.md.
 
 **Open**
 
-- "Active" in criterion 5 needs a definition. In Sprint 1 it can only mean
-  pending plus approved, since return does not exist yet. It changes when the
-  return story ships, and the auto-refuse story touches the same question.
+- Does the booking form show which hours are already taken, or does the trainer find
+  out at submit time? Trainers can read `slots`, so showing them is possible. Not
+  showing them is one less query and one less thing to keep correct.
+
+**Depends on:** story 2, the Sprint 0 spike, the fixed-slots decision
+**Blocks:** stories 4 and 5
 
 ---
 
