@@ -200,3 +200,18 @@ narrow but not zero.
 
 Reversal condition: if this happens in practice, move refusal into a Cloud
 Function using the Admin SDK, which can do both in one transaction. Not now.
+
+## 2026-08-11 Test files run sequentially
+
+`fileParallelism: false` in vitest.config.mjs. Vitest runs files in parallel by
+default, they all share one emulator, and each calls clearFirestore in beforeEach,
+so one file wipes another's data mid-test. Found it as 7 failures locally and 8 in
+CI on the same commit.
+
+The alternative is a distinct projectId per test file, which gives isolation and
+keeps parallelism. Rejected for now because it means editing three test files owned
+by three different lanes, and because it relies on every future file remembering to
+set one. Sequential is one line in a file nobody owns and it applies automatically.
+
+Cost: slower as the suite grows. Currently 4 files and about 3 seconds. Revisit past
+roughly 20 files, and do it as one deliberate pass rather than lane by lane.
