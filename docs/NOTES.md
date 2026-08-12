@@ -637,3 +637,22 @@ the fix: the update is permitted only if status is the only field that differs.
 The general shape: a rule is a whitelist of what may change, not a check on the
 thing you happened to think about.
 
+
+## Writing a rule
+
+Per collection, per operation. Never `allow write`.
+
+1. Who may do this? Role from the claim, and identity from request.auth.uid.
+2. Is the incoming data valid? Types first, then values. Everything from
+   request.resource.data or the token is free; anything needing get() costs a read.
+3. Update only: which fields may change? changedKeysAre. Whatever I do not check,
+   I permit.
+4. Update only: from what state? resource.data is the before, request.resource.data
+   is the after.
+
+Deny everything first and open one criterion at a time. The question is never "what
+should I allow" but "what does this criterion require, and nothing more".
+
+If answering the question needs more than one document I can name by path, a rule
+cannot do it. Put the answer in a document I can name, or move the operation to a
+Cloud Function.

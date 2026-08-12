@@ -2,51 +2,166 @@ rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+
+    // =======================================================================
+    // HELPERS
+    //
+    // Note on roles: We read roles from custom claims in the auth token. 
+    // This is free. If we read them from the `users/{uid}` document instead, 
+    // it would cost a database read on every single rule evaluation and 
+    // easily blow up our Firestore limits.
+    // =======================================================================
+
+    function signedIn() {
+      return request.auth != null;
+    }
+
     function isManager() {
-      return request.auth != null && request.auth.token.role == 'manager';
+      return signedIn() && request.auth.token.role == 'manager';
+    }
+
+    function isTrainer() {
+      return signedIn() && request.auth.token.role == 'trainer';
     }
 
     function changedKeysAre(keys) {
       return request.resource.data.diff(resource.data).affectedKeys().hasOnly(keys);
     }
 
-      match /users/{uid} {
-      allow read: if request.auth != null;
-      allow write: if false;
+    // Validates the shape of a booking slot.
+    // 
+    // We validate using `startHour` and `durationHours` (integers)
+    // instead of the `startTime` timestamp. 
+    // Why? Firebase timestamps evaluate in UTC. Since we're in Morocco (UTC+1), 
+    // a 14:00 local booking looks like 13:00 to Firebase. Checking that against 
+    // our 08:00 - 18:00 schedule causes off-by-one errors, and DST makes it worse. 
+    // Using integers completely bypasses the timezone mess. 
+    // (minutes and seconds are safe to check on the timestamp since they don't shift).
+    function validSlotShape(d) {
+      return d.startTime is timestamp
+          && d.startTime.minutes() == 0
+          && d.startTime.seconds() == 0
+          && d.startHour is int
+          && d.durationHours is int
+          && d.startHour >= 8
+          && d.durationHours in [1, 2]
+          && d.startHour + d.durationHours <= 18;
     }
 
-      match /types/{typeId} {
-      allow read: if request.auth != null;
+    // Checks if the requested equipment is actually in service.
+    // Cost: 1 document read per evaluation. We accept this cost because 
+    // we absolutely cannot trust the client UI to enforce this filter for us.
+    function deviceInService(equipmentId) {
+      return get(/databases/$(database)/documents/equipment/$(equipmentId)).data.status == 'in_service';
+    }
+
+    // =======================================================================
+    // USERS COLLECTION
+    // 
+    // Safe for any logged-in user to read (only holds basic info + active 
+    // booking count). We need trainers to be able to read this so the manager 
+    // UI can pull their names for the pending list.
+    //
+    // `activeBookings` is the ONLY writable field. We enforce the 2-booking 
+    // cap here because Firestore rules can't query collections to count 
+    // a user's active bookings dynamically.
+    // =======================================================================
+    match /users/{uid} {
+      allow read: if signedIn();
+      allow create, delete: if false;
+
+      allow update: if changedKeysAre(['activeBookings'])
+        && (
+          // Trainer claiming a slot (can only bump by 1, up to a max of 2)
+          (
+            request.auth.uid == uid
+            && request.resource.data.activeBookings == resource.data.activeBookings + 1
+            && request.resource.data.activeBookings <= 2
+          )
+          ||
+          // Manager releasing a slot after refusing a booking
+          (
+            isManager()
+            && request.resource.data.activeBookings == resource.data.activeBookings - 1
+            && request.resource.data.activeBookings >= 0
+          )
+        );
+    }
+
+    // =======================================================================
+    // TYPES & EQUIPMENT
+    //
+    // Purely reference data for now. Anyone signed in can read the catalog, 
+    // but nobody can write to it from the client app.
+    // =======================================================================
+    match /types/{typeId} {
+      allow read: if signedIn();
       allow write: if false;
     }
 
     match /equipment/{equipmentId} {
-      allow read: if request.auth != null;
+      allow read: if signedIn();
       allow write: if false;
     }
 
+    // =======================================================================
+    // BOOKINGS
+    //
+    // Note: `write` is intentionally split out. If we used `allow write`, it 
+    // would grant `delete` access too, and nobody should ever hard-delete 
+    // a booking (we only change status).
+    // =======================================================================
     match /bookings/{bookingId} {
+      // Trainers can only read their own. 
+      // Reminder: Rules aren't filters! The frontend MUST include 
+      // `.where('trainerId', '==', uid)` in its query, or Firebase will 
+      // reject the whole request immediately.
       allow read: if isManager()
-        || (request.auth != null && resource.data.trainerId == request.auth.uid);
+        || (signedIn() && resource.data.trainerId == request.auth.uid);
 
+      allow create: if isTrainer()
+        // Force the owner ID to be the actual logged-in user (prevents spoofing)
+        && request.resource.data.trainerId == request.auth.uid
+        && request.resource.data.status == 'pending'
+        && validSlotShape(request.resource.data)
+        && deviceInService(request.resource.data.equipmentId);
+
+      // Only managers can update a booking. They can ONLY touch the status field, 
+      // and it MUST be moving from 'pending' to either 'approved' or 'refused'.
+      // If trainers could change this, it would bypass the whole approval flow.
       allow update: if isManager()
         && changedKeysAre(['status'])
         && resource.data.status == 'pending'
         && request.resource.data.status in ['approved', 'refused'];
 
-      allow create, delete: if false;
+      allow delete: if false;
     }
 
-    // Slot occupancy. Existence means taken. Created only, never modified or
-    // deleted, which is what makes the create atomic. See decisions.md.
+    // =======================================================================
+    // SLOTS
+    //
+    // If a slot document exists, that device is taken for that hour. 
+    // We allow anyone logged in to read it because trainers need to know 
+    // what's available without being able to read *who* booked it.
+    //
+   // How the atomicity works: `update` is denied. If two trainers try to book
+      // the same slot at the same instant, the second setDoc counts as an update,
+      // fails, and the first survives. No transaction needed.
+    // =======================================================================
     match /slots/{slotId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
+      allow read, create: if signedIn();
       allow update: if false;
-       allow delete: if isManager();
+
+      // When a manager refuses a booking, they need to delete the slot.
+     // Trade-off: a manager can delete any slot, including one belonging to an
+      // approved booking. A rule cannot verify the slot belongs to a booking
+      // currently being refused, because that would need the booking's post-write
+      // state. Accepted because managers are trusted accounts created by the centre.
+      // The single write path in lib/slots/ is a convention, not enforcement.
+      allow delete: if isManager();
     }
 
-    // Catch-all. Any collection not named above is denied outright.
+    // Catch-all: Lock down anything we didn't explicitly define above.
     match /{document=**} {
       allow read, write: if false;
     }
