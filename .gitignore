@@ -35,3 +35,7 @@ npm-debug.log*
 *.pem
 .vercel
 .vscode/
+
+/test-results/
+/playwright-report/
+/playwright/.cache/

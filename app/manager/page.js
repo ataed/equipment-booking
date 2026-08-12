@@ -25,10 +25,6 @@ function ManagerHome() {
           Demandes en attente
         </Link>
       </nav>
-
-      <button onClick={signOut} className="mt-8 text-sm underline">
-        Se déconnecter
-      </button>
     </main>
   );
 }

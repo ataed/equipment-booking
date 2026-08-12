@@ -28,10 +28,6 @@ function TrainerHome() {
           Mes réservations
         </Link>
       </nav>
-
-      <button onClick={signOut} className="mt-8 text-sm underline">
-        Se déconnecter
-      </button>
     </main>
   );
 }

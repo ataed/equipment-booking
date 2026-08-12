@@ -9,6 +9,8 @@
     "lint": "eslint",
     "test": "vitest run",
     "test:emulator": "firebase emulators:exec --only firestore,auth \"vitest run\"",
+    "test:e2e": "firebase emulators:exec --only firestore,auth \"node scripts/seed.mjs && playwright test\"",
+    "test:e2e:ui": "firebase emulators:exec --only firestore,auth \"node scripts/seed.mjs && playwright test --ui\"",
     "format": "prettier --write .",
     "format:check": "prettier --check ."
   },
@@ -20,6 +22,7 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "5.0.1",
+    "@playwright/test": "1.62.1",
     "autoprefixer": "^10.4.23",
     "eslint": "^9",
     "eslint-config-next": "16.2.12",
