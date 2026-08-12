@@ -15,13 +15,18 @@ that table.
 | Story | Creates | Edits | Reads | Writes |
 |---|---|---|---|---|
 | 2 trainer sees equipment | `app/trainer/equipment/page.js`, `lib/equipment/list.js`, `tests/rules/equipment.test.js` | `firestore.rules`, `app/trainer/page.js` | `types`, `equipment` | nothing |
-| 3 trainer books a type | `app/trainer/booking/page.js`, `lib/slots/claim.js`, `lib/bookings/create.js`, `tests/rules/bookings.test.js`, `tests/slots.test.js` | `firestore.rules` | `equipment` | `bookings`, `slots` |
+| 3 trainer books a type | `app/trainer/booking/page.js`, `lib/slots/claim.js`, `lib/bookings/create.js`, `tests/rules/bookings-create.test.js`, `tests/slots.test.js` | `firestore.rules`, `docs/schema.md`, `scripts/seed.mjs`, `tests/rules/slots.test.js`, `lib/contract.js`, `lib/bookings/decide.js` | `equipment` | `bookings`, `slots` |
 | 4 trainer sees own bookings | `app/trainer/my-bookings/page.js`, `lib/bookings/mine.js`, `tests/rules/bookings-read.test.js` | `firestore.rules`, `firestore.indexes.json`, `app/trainer/page.js` | `bookings` | nothing |
 | 5 manager approves or refuses | `app/manager/bookings/page.js`, `lib/bookings/decide.js`, `tests/rules/decide.test.js` | `firestore.rules`, `firestore.indexes.json`, `app/manager/page.js`, `lib/slots/` | `bookings`, `users` | `bookings` status, `slots` release |
 
 Story 1 is not in the table. It is not lane work, it is serialised: every screen
 imports `useAuth` and `RequireRole`, so nothing else could start until it landed.
 Same category as `lib/contract.js` and the seed script.
+
+Story 3's row is corrected after building it. The table predicted one edit,
+`firestore.rules`. It was six. The schema and seed changed because two decisions
+arrived mid-story, `lib/contract.js` gained a guard, `slots.test.js` needed a test
+renamed once the delete rule changed, and `decide.js` is another lane's file.
 
 ## What the table found
 
