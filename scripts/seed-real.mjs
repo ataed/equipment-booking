@@ -1,19 +1,4 @@
-// Seeds the emulator with the data Sprint 1 needs to be startable.
-// Run with the emulator up:  node scripts/seed.mjs
-//
-// The Admin SDK bypasses Security Rules entirely, so nothing here is checked by
-// the rules file. That is why it uses the same contract helpers the app will:
-// nothing else stops this script writing data the app could never produce.
-//
-// It needs no credentials against the emulator, only the environment variables
-// below telling it where to connect.
-
-// Hardcoded on purpose. This script creates fake accounts with known passwords
-// and must never run against a real project.
-process.env.FIRESTORE_EMULATOR_HOST = "127.0.0.1:8080";
-process.env.FIREBASE_AUTH_EMULATOR_HOST = "127.0.0.1:9099";
-
-import { initializeApp } from "firebase-admin/app";
+import { initializeApp, applicationDefault } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore, Timestamp, FieldValue } from "firebase-admin/firestore";
 import {
@@ -24,18 +9,46 @@ import {
   slotIdsForBooking,
 } from "../lib/contract.js";
 
-initializeApp({ projectId: "almanar-booking-dev" });
+const PROJECT_ID = "almanar-booking-dev";
+
+// ---------------------------------------------------------------------------
+// Guards
+//
+// Two of them, because this script has full write access to a real project and the
+// failure worth making impossible is running it against the wrong target.
+// ---------------------------------------------------------------------------
+
+if (!process.env.GOOGLE_APPLICATION_CREDENTIALS) {
+  throw new Error(
+    "GOOGLE_APPLICATION_CREDENTIALS is not set. Refusing to run without an explicit credential."
+  );
+}
+
+// A leftover shell export would otherwise make this quietly seed the emulator while
+// you believe you seeded the real project.
+if (
+  process.env.FIRESTORE_EMULATOR_HOST ||
+  process.env.FIREBASE_AUTH_EMULATOR_HOST
+) {
+  throw new Error(
+    "Emulator host vars are set. Unset them before seeding the real project."
+  );
+}
+
+initializeApp({ credential: applicationDefault(), projectId: PROJECT_ID });
 
 const auth = getAuth();
 const db = getFirestore();
 
+console.log("connected to", PROJECT_ID);
+
 // ---------------------------------------------------------------------------
 // Data
+//
+// Identical to scripts/seed.mjs. Fixed uids so the bookings below can reference
+// them and so they are readable in the console.
 // ---------------------------------------------------------------------------
 
-// Fixed uids, not generated ones. The seeded bookings below reference these, and
-// a generated uid would change on every run so nothing could point at it. Also
-// makes them readable in the emulator UI and in test assertions.
 const TRAINERS = [
   { uid: "trainer-amina", email: "amina@almanar.test", name: "Amina Benali" },
   {
@@ -46,9 +59,9 @@ const TRAINERS = [
   { uid: "trainer-karim", email: "karim@almanar.test", name: "Karim Tazi" },
 ];
 
-// Two managers with the same role, not a separate sous-manager role. The manager
-// is away one week a month and approving is useless without the storeroom key,
-// so the second person needs identical permissions. See questions.md item 1.
+// Two managers with the same role, not a separate sous-manager role. The manager is
+// away one week a month and approving is useless without the storeroom key, so the
+// second person needs identical permissions. See questions.md item 1.
 const MANAGERS = [
   {
     uid: "manager-rachid",
@@ -62,10 +75,11 @@ const MANAGERS = [
   },
 ];
 
+// Known password on purpose: this is a demo environment and the accounts are fake.
+// It is also the reason this script must never run against anything real in the
+// ordinary sense.
 const PASSWORD = "test1234";
 
-// Doc id is the type name, so the id is readable and there is no lookup needed
-// to know what a device is.
 const TYPES = [
   { id: "projector", name: "Projecteur", category: "presentation" },
   { id: "laptop", name: "Ordinateur portable", category: "computing" },
@@ -73,9 +87,8 @@ const TYPES = [
   { id: "camera", name: "Caméra", category: "media" },
 ];
 
-// Three projectors on purpose: the device assignment loop needs more than one
-// candidate to be worth testing. One camera out of service on purpose: story 2
-// criterion 2 needs a type where every device is unavailable.
+// Three projectors so the assignment loop has more than one candidate. One camera out
+// of service so story 2's unavailable case has data.
 const EQUIPMENT = [
   {
     id: "projector-1",
@@ -98,9 +111,7 @@ const EQUIPMENT = [
   { id: "camera-1", typeId: "camera", status: EQUIPMENT_STATUS.OUT_OF_SERVICE },
 ];
 
-// Tomorrow, so the bookings are always in the future however long the emulator
-// data sits around. Hour set explicitly because the validator requires minutes
-// and seconds to be zero.
+// Tomorrow, so the bookings are in the future however long the data sits around.
 function tomorrowAt(hour) {
   const d = new Date();
   d.setDate(d.getDate() + 1);
@@ -108,9 +119,6 @@ function tomorrowAt(hour) {
   return d;
 }
 
-// Three pending bookings so story 5, the approve screen, can be built without
-// waiting for story 3, the booking write. That is a dependency removed by data
-// rather than by waiting. See backlog-passes.md.
 const BOOKINGS = [
   {
     id: "booking-1",
@@ -140,10 +148,14 @@ const BOOKINGS = [
 
 // ---------------------------------------------------------------------------
 // Clearing
-// ---------------------------------------------------------------------------
-
+//
 // Firestore has no drop-collection. A collection stops existing when its last
 // document is deleted, so clearing means listing and deleting each document.
+//
+// listUsers is paginated at 1000 by default. Fine here, but on a real project with
+// more accounts this would silently only clear the first page.
+// ---------------------------------------------------------------------------
+
 async function clear() {
   const listed = await auth.listUsers();
   if (listed.users.length) {
@@ -164,10 +176,9 @@ async function clear() {
 // ---------------------------------------------------------------------------
 
 // A user is two things in two separate systems. Firebase Auth holds the sign-in
-// identity and the custom claim that rules trust. Firestore holds the document
-// the app reads to show a name. The link between them is the uid, and the
-// Firestore document id must be that same uid or a rule looking up
-// users/{request.auth.uid} finds nothing.
+// identity and the custom claim that rules trust. Firestore holds the document the app
+// reads to show a name. The link is the uid, and the Firestore document id must be that
+// same uid or a rule looking up users/{request.auth.uid} finds nothing.
 async function createUser({ uid, email, name, role }) {
   await auth.createUser({ uid, email, password: PASSWORD, displayName: name });
   await auth.setCustomUserClaims(uid, { role });
@@ -175,19 +186,17 @@ async function createUser({ uid, email, name, role }) {
     name,
     email,
     role,
-    // Rules cannot query, so this is what the booking cap rule reads. Every user
-    // starts at 0 and the three seeded bookings below bring three trainers to 1.
+    // Rules cannot query, so this counter is what the booking cap rule reads.
     activeBookings: 0,
   });
 }
 
-// A booking and its slots are written together. Every hour the booking occupies
-// gets a slot document, because pending holds the slot. Without these the data
-// would be inconsistent: a booking that occupies hours nothing records, so the
-// app would offer an already-taken device as free.
+// A booking and its slots are written together, because pending holds the slot.
+// Without the slots the data would be inconsistent: a booking occupying hours nothing
+// records, so the app would offer an already-taken device as free.
 async function createBooking(b) {
-  // The Admin SDK ignores rules, so the validator is the only thing standing
-  // between a typo here and seed data the app could never have produced.
+  // The Admin SDK ignores rules, so the validator is the only thing standing between
+  // a typo here and data the app could never have produced.
   const check = validateBooking(b);
   if (!check.valid) {
     throw new Error(`${b.id} is invalid: ${check.reason}`);
@@ -219,18 +228,12 @@ async function createBooking(b) {
     equipmentId: b.equipmentId,
     startTime: Timestamp.fromDate(b.startTime),
     endTime: Timestamp.fromDate(endTime),
-    // Plain numbers alongside the timestamps, because rules evaluate timestamp
-    // methods in UTC and Morocco is UTC+1. A rule reading startTime.hours() would
-    // see 13 for a 14:00 booking. See decisions.md.
     startHour: b.startTime.getHours(),
     durationHours: b.durationHours,
     status: BOOKING_STATUS.PENDING,
     createdAt: Timestamp.now(),
     returnedAt: null,
     urgent: false,
-    // Empty string rather than absent. A rule checking a field that does not
-    // exist errors and denies rather than evaluating false, so every field needs
-    // a value at creation. See schema.md.
     urgentReason: "",
     damaged: false,
     damagePhotoUrl: null,
@@ -241,13 +244,14 @@ async function createBooking(b) {
   }
 
   await batch.commit();
-  // The seeded bookings are pending, which counts as active. Without this the
-  // counter says 0 while the trainer has a booking, so their next attempt would be
-  // treated as their first rather than their second.
+
+  // Pending counts as active. Without this the counter says 0 while the trainer has a
+  // booking, so their next attempt would be treated as their first.
   await db
     .collection("users")
     .doc(b.trainerId)
     .update({ activeBookings: FieldValue.increment(1) });
+
   return slotIds;
 }
 
@@ -285,10 +289,10 @@ for (const b of BOOKINGS) {
   console.log("booking:", b.id, "slots:", slotIds.join(", "));
 }
 
-// Claims are not visible in the emulator UI, so this is the only way to confirm
-// setCustomUserClaims actually did something.
-const check = await auth.getUserByEmail("amina@almanar.test");
-console.log("claims on amina:", check.customClaims);
+// Claims are not visible in the Firebase console either, so this is the only way to
+// confirm setCustomUserClaims did something.
+const claimsCheck = await auth.getUserByEmail("amina@almanar.test");
+console.log("claims on amina:", claimsCheck.customClaims);
 
 console.log("\nsign in with any of the emails above, password:", PASSWORD);
 process.exit(0);

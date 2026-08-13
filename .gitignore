@@ -34,3 +34,8 @@ npm-debug.log*
 .DS_Store
 *.pem
 .vercel
+.vscode/
+
+/test-results/
+/playwright-report/
+/playwright/.cache/

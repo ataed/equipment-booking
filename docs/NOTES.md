@@ -583,3 +583,76 @@ refresh. So a role change is not instant. Not a problem here because roles are s
 at seed time, but it is the classic surprise.
 
 **1000 byte limit.** Claims are for a role or a flag, not for data.
+
+## Rules are not filters
+
+The biggest difference from RLS, and the one most likely to bite me.
+
+In Postgres, a policy is evaluated per row. I query freely, the database checks each
+row, and I get back the subset I am allowed to see.
+
+Firestore evaluates the **query**, not the rows. If the query could return a document
+I may not read, the whole request is refused. Zero documents, permission-denied. It
+never looked at the data.
+
+So with `allow read: if resource.data.trainerId == request.auth.uid`:
+
+    getDocs(collection(db, "bookings"))
+      refused. Nothing constrains trainerId, so the query might return someone
+      else's booking. It does not return mine and skip theirs, it returns nothing.
+
+    query(collection(db, "bookings"), where("trainerId", "==", myUid))
+      allowed. The constraint matches what the rule permits.
+
+    query(collection(db, "bookings"), where("trainerId", "==", someoneElse))
+      refused. Narrowed, but narrowed to the wrong thing. The constraint has to
+      match what the rule permits, not merely exist.
+
+**Consequences**
+
+The `where` clause is not an optimisation. It is what makes the query legal. Remove
+it and the screen is empty, not over-full.
+
+Rules and queries are designed as a pair. Writing all the queries and adding rules
+afterwards means rewriting queries.
+
+It is a footgun for me, not a hole for an attacker. The unfiltered query is refused
+outright, and the filtered one can only be filtered to myself, because my uid comes
+from the verified token and cannot be forged.
+
+It also means a rule can never hide a field. A document is readable or not. That is
+why slot occupancy lives in its own collection with no owner on it: the trainer
+needs one fact out of a booking he is not allowed to open.
+
+## Rules only see what you check
+
+A rule that validates the field it cares about and nothing else permits every other
+field to change alongside it. `allow update: if isManager() && newStatus in [...]`
+lets a manager rewrite trainerId and equipmentId in the same call, because the rule
+never looked.
+
+`request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])` is
+the fix: the update is permitted only if status is the only field that differs.
+
+The general shape: a rule is a whitelist of what may change, not a check on the
+thing you happened to think about.
+
+
+## Writing a rule
+
+Per collection, per operation. Never `allow write`.
+
+1. Who may do this? Role from the claim, and identity from request.auth.uid.
+2. Is the incoming data valid? Types first, then values. Everything from
+   request.resource.data or the token is free; anything needing get() costs a read.
+3. Update only: which fields may change? changedKeysAre. Whatever I do not check,
+   I permit.
+4. Update only: from what state? resource.data is the before, request.resource.data
+   is the after.
+
+Deny everything first and open one criterion at a time. The question is never "what
+should I allow" but "what does this criterion require, and nothing more".
+
+If answering the question needs more than one document I can name by path, a rule
+cannot do it. Put the answer in a document I can name, or move the operation to a
+Cloud Function.

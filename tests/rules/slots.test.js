@@ -1,10 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll, beforeEach } from "vitest";
+import { describe, it, beforeAll, afterAll, beforeEach } from "vitest";
 import {
   initializeTestEnvironment,
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc, getDoc,deleteDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc, deleteDoc } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 
 let testEnv;
@@ -44,28 +44,42 @@ describe("slots rules", () => {
   it("lets a signed-in user create a slot", async () => {
     const trainer = testEnv.authenticatedContext("trainer-a");
     await assertSucceeds(
-      setDoc(doc(trainer.firestore(), "slots", SLOT), { bookingId: "b1" }),
+      setDoc(doc(trainer.firestore(), "slots", SLOT), { bookingId: "b1" })
     );
   });
 
   it("refuses a second create on the same slot", async () => {
     const a = testEnv.authenticatedContext("trainer-a");
     await assertSucceeds(
-      setDoc(doc(a.firestore(), "slots", SLOT), { bookingId: "b1" }),
+      setDoc(doc(a.firestore(), "slots", SLOT), { bookingId: "b1" })
     );
 
     const b = testEnv.authenticatedContext("trainer-b");
     await assertFails(
-      setDoc(doc(b.firestore(), "slots", SLOT), { bookingId: "b2" }),
+      setDoc(doc(b.firestore(), "slots", SLOT), { bookingId: "b2" })
     );
   });
 
-  it("refuses a delete", async () => {
-    const trainer = testEnv.authenticatedContext("trainer-a");
+  it("refuses a trainer deleting a slot", async () => {
+    const trainer = testEnv.authenticatedContext("trainer-a", {
+      role: "trainer",
+    });
     await assertSucceeds(
-      setDoc(doc(trainer.firestore(), "slots", SLOT), { bookingId: "b1" }),
+      setDoc(doc(trainer.firestore(), "slots", SLOT), { bookingId: "b1" })
     );
-    
     await assertFails(deleteDoc(doc(trainer.firestore(), "slots", SLOT)));
+  });
+
+  it("lets a manager delete a slot, which is how refusing frees the device", async () => {
+    const trainer = testEnv.authenticatedContext("trainer-a", {
+      role: "trainer",
+    });
+    await assertSucceeds(
+      setDoc(doc(trainer.firestore(), "slots", SLOT), { bookingId: "b1" })
+    );
+    const manager = testEnv.authenticatedContext("manager-r", {
+      role: "manager",
+    });
+    await assertSucceeds(deleteDoc(doc(manager.firestore(), "slots", SLOT)));
   });
 });

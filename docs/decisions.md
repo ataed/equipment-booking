@@ -46,9 +46,13 @@ report fixes as available that cannot be installed yet. Both accepted.
 
 ## 2026-08-08 Accepted four open audit advisories
 
-nanoid: the fix is 3.3.17, published 3 August, inside the 7-day cooldown. So
-audit reports a fix as available and `audit fix` cannot apply it. Resolves itself
-around 10 August. Not exposed meanwhile, the bug needs nanoid(0).
+nanoid: resolved 10 August. The fix (3.3.17, published 3 August) fell outside the
+cooldown once the rolling window reached it. Three production advisories remain,
+postcss and sharp, both nested under next, both unchanged.
+
+**note**: The cooldown is a rolling window. `npm audit` reports a fix as available while
+`audit fix` cannot apply it, because audit does not know about `before`. It
+resolves itself when the window reaches the fix.
 
 postcss: my direct dependency is 8.5.25, which is not in the vulnerable range.
 The vulnerable copy is next@16.2.12's own bundled postcss@8.4.31, so it can only
@@ -161,3 +165,100 @@ Function with the Admin SDK. Whichever it is, the release path and the claim pat
 must be owned by the same module.
 
 The same question covers cancel and the scheduled auto-refuse, both Sprint 2.
+
+
+## 2026-08-09 No proxy.js, client-side route protection only
+
+Firebase Auth stores the session in IndexedDB, so a server-side proxy cannot see
+who is signed in. Making it work needs a session cookie minted by a route handler
+using the Admin SDK, plus refresh handling, plus a new failure mode where the
+cookie and the live session disagree.
+
+Rejected for Sprint 1. A route guard stops someone seeing a page; Security Rules
+stop someone getting data, and an empty page is not a leak. Next renamed
+middleware to proxy in v16 to signal the same thing: it is routing
+infrastructure, not a security boundary.
+
+Cost: a brief loading flash before the redirect, and no protection for
+server-rendered data fetching. Revisit if a screen needs server-side data.
+
+
+
+## 2026-08-10 Refusing a booking is two operations, not one
+
+Refusing writes the booking's status and then releases its slots. Two writes, not
+one batch.
+
+Why not a batch: releaseSlots lives in lib/slots/claim.js and commits its own,
+because slots have a single write path owned by one module. That is what stops
+slots and bookings drifting, and it is worth more than atomicity here.
+
+Cost accepted: if the release fails after the status write succeeds, the booking
+reads refused while its slots are still held, so the device stays blocked by a
+booking nobody has. Both writes are small and adjacent, which makes the window
+narrow but not zero.
+
+Reversal condition: if this happens in practice, move refusal into a Cloud
+Function using the Admin SDK, which can do both in one transaction. Not now.
+
+## 2026-08-11 Test files run sequentially
+
+`fileParallelism: false` in vitest.config.mjs. Vitest runs files in parallel by
+default, they all share one emulator, and each calls clearFirestore in beforeEach,
+so one file wipes another's data mid-test. Found it as 7 failures locally and 8 in
+CI on the same commit.
+
+The alternative is a distinct projectId per test file, which gives isolation and
+keeps parallelism. Rejected for now because it means editing three test files owned
+by three different lanes, and because it relies on every future file remembering to
+set one. Sequential is one line in a file nobody owns and it applies automatically.
+
+Cost: slower as the suite grows. Currently 4 files and about 3 seconds. Revisit past
+roughly 20 files, and do it as one deliberate pass rather than lane by lane.
+
+
+## 2026-08-11 The two-booking cap is enforced through a counter, not a query
+
+Story 3 criterion 5: a trainer with 2 active bookings is refused a third. Rules
+cannot query, so no rule can count a trainer's bookings. There is no version of
+firestore.rules that enforces this against the bookings collection.
+
+Chosen: a counter on the user document. users/{uid}.activeBookings, and the rule
+allows the owner to increment by exactly 1 and only up to 2. The booking and the
+increment go in the same batch, so a trainer at the cap has the whole batch refused in
+the rule rather than in JavaScript.
+
+Rejected a Cloud Function using the Admin SDK, which can query. It requires the Blaze
+plan, meaning a card on file. Usage would stay inside the free quota, but deployments
+incur small storage charges for the container, and it puts a cold start in the booking
+path. The Admin SDK is already used where it is genuinely needed, in scripts/seed.mjs
+and in the rules tests.
+
+Rejected client-side only. The brief is specifically that rules do the blocking, and a
+criterion that reads as enforced while being advisory is worse than an honest one.
+
+Cost accepted: the counter can drift. Nothing recomputes it, so a bug that increments
+without creating a booking leaves a trainer stuck or over their cap. It also couples
+dev C to it: refusing has to decrement.
+
+Reversal condition: if the counter drifts in practice, move booking creation into a
+Cloud Function that counts by querying.
+
+## 2026-08-11 startHour and durationHours as plain numbers on the booking
+
+Security Rules evaluate timestamp methods in UTC. Morocco is UTC+1, so a 14:00 local
+booking has startTime.hours() == 13 inside a rule. Validating the centre's 08:00 to
+18:00 against that is off by one, and hardcoding a +1 offset breaks twice a year with
+DST.
+
+So the rule validates startHour and durationHours, plain numbers carrying the local
+hour with no timezone in the way. minutes() and seconds() are used directly, because
+those do not shift with offset.
+
+Same trap as toISOString() in lib/contract.js, which converts to UTC and would produce
+a slot ID for the wrong hour. Second occurrence of one mistake.
+
+Cost: startHour duplicates what startTime already says. Written once at creation,
+never updated, and a booking is immutable except for status. Dev C computes duration
+from endTime minus startTime instead, so there are two ways to get the same number.
+The fields are authoritative, because the rule reads them.

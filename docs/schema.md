@@ -10,11 +10,17 @@ parent would make those queries impossible.
 - name: string
 - email: string
 - role: "manager" | "trainer"
+- activeBookings: number
 
 No password field. Firebase Auth stores that, not Firestore. Role is stored
 twice: once as a custom claim (Auth reads this for rules) and once here (app
 UI reads this to list managers etc). The claim is the one rules trust. This
 field is just for the UI.
+
+activeBookings exists because rules cannot query, so a rule cannot count a trainer's
+bookings. The rule reads this counter instead, allows the owner to increment by 1 up
+to 2, and allows a manager to decrement when refusing. It is the only writable field
+on this document. See decisions.md.
 
 ## types/{id}
 
@@ -48,6 +54,14 @@ not just decrement a number.
 - urgentReason: string (empty string "" if not urgent ,same reasoning: always present)
 - damaged: boolean (false by default)
 - damagePhotoUrl: string | null
+- startHour: number (local hour, 8 to 17)
+- durationHours: number (1 or 2)
+
+startHour and durationHours duplicate what startTime and endTime already say. They
+exist because Security Rules evaluate timestamp methods in UTC and Morocco is UTC+1,
+so a rule reading startTime.hours() sees the wrong hour. Numbers carry the local hour
+with no timezone in the way. Written once at creation, never updated. See
+decisions.md.
 
 startTime is always on the hour. endTime is startTime plus 1 or 2 hours.
 Centre hours 08:00 to 18:00, so the latest start is 17:00 for one hour and
