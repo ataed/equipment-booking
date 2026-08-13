@@ -10,14 +10,6 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    env:
-      NEXT_PUBLIC_USE_EMULATORS: "true"
-      NEXT_PUBLIC_FIREBASE_API_KEY: demo-api-key
-      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: almanar-booking-dev.firebaseapp.com
-      NEXT_PUBLIC_FIREBASE_PROJECT_ID: almanar-booking-dev
-      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: almanar-booking-dev.firebasestorage.app
-      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
-      NEXT_PUBLIC_FIREBASE_APP_ID: demo-app-id
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -33,6 +25,14 @@ jobs:
 
   e2e:
     runs-on: ubuntu-latest
+    env:
+      NEXT_PUBLIC_USE_EMULATORS: "true"
+      NEXT_PUBLIC_FIREBASE_API_KEY: demo-api-key
+      NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: almanar-booking-dev.firebaseapp.com
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: almanar-booking-dev
+      NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: almanar-booking-dev.firebasestorage.app
+      NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "000000000000"
+      NEXT_PUBLIC_FIREBASE_APP_ID: demo-app-id
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
