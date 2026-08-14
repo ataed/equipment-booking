@@ -10,6 +10,11 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # tests/setup-admin-env.js falls back to this, but the fallback should not
+      # be the only place CI learns the project id. admin.js and
+      # initializeTestEnvironment must agree on it or they are two databases.
+      NEXT_PUBLIC_FIREBASE_PROJECT_ID: almanar-booking-dev
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -20,6 +25,12 @@ jobs:
         with:
           distribution: temurin
           java-version: "21"
+      # Same cache as the e2e job. Without it this job downloads the emulator
+      # jars on every run.
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/firebase/emulators
+          key: firebase-emulators-${{ runner.os }}
       - run: npm ci
       - run: npm run test:emulator
 

@@ -656,3 +656,23 @@ should I allow" but "what does this criterion require, and nothing more".
 If answering the question needs more than one document I can name by path, a rule
 cannot do it. Put the answer in a document I can name, or move the operation to a
 Cloud Function.
+
+
+## The Admin SDK and the Route Handler security boundary
+
+The Firebase Admin SDK bypasses Security Rules entirely. It does not evaluate `firestore.rules` and it ignores `allow create: if false`.
+
+When using the Admin SDK in a Next.js Route Handler, the security boundary shifts from the database into the handler code. 
+
+**The verification sequence:**
+1. The client sends its raw JWT in the `Authorization: Bearer` header. (Client-side route guards like `RequireRole` are UX only; an attacker can bypass them and hit the endpoint directly).
+2. The handler reads the header and calls `adminAuth.verifyIdToken()`. This cryptographically proves who is calling. 
+3. The handler explicitly checks the verified token's `role` claim. 
+
+If you forget step 2 or 3, the endpoint is wide open and anyone who finds the URL can execute privileged Admin SDK commands.
+
+**Testing the boundary:**
+Because the Admin SDK bypasses rules, `rules-unit-testing` against the emulator cannot test this boundary. The proof that the boundary holds lives in the API tests (`tests/api/trainers.test.js`), which must assert that unauthenticated callers and wrong roles receive a 401/403 before any data is written.
+
+**Data Integrity without rules:**
+Rules enforce schema shape (e.g., ensuring `activeBookings: 0` exists on creation). Since the Admin SDK bypasses rules, it also bypasses your shape validation. The route handler must enforce the required fields in code. A forgotten field here breaks the core booking loop later.
