@@ -9,7 +9,7 @@ import {
   assertSucceeds,
   assertFails,
 } from "@firebase/rules-unit-testing";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, updateDoc } from "firebase/firestore";
 import { readFileSync } from "node:fs";
 import { ROLES, BOOKING_STATUS, EQUIPMENT_STATUS } from "../../lib/contract";
 
@@ -199,5 +199,33 @@ describe("the two-booking cap, enforced through the counter", () => {
 
     // Manager decrements the count back to 0
     await assertSucceeds(bump(manager(), "trainer-a", 0));
+  });
+});
+
+describe("push notification token registration (Story 1)", () => {
+  it("lets a trainer write an FCM token to their own document", async () => {
+    await assertSucceeds(
+      updateDoc(doc(trainerA().firestore(), "users", "trainer-a"), {
+        fcmToken: "token-123",
+      })
+    );
+  });
+
+  it("refuses a trainer writing a token to another trainer's document", async () => {
+    await assertFails(
+      updateDoc(doc(trainerB().firestore(), "users", "trainer-a"), {
+        fcmToken: "token-456",
+      })
+    );
+  });
+
+  it("refuses a trainer changing both fcmToken and activeBookings in one write", async () => {
+    // This is the critical anti-spoofing check for Criterion 3.
+    await assertFails(
+      updateDoc(doc(trainerA().firestore(), "users", "trainer-a"), {
+        fcmToken: "token-789",
+        activeBookings: 1,
+      })
+    );
   });
 });

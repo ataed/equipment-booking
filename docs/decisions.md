@@ -262,3 +262,6 @@ Cost: startHour duplicates what startTime already says. Written once at creation
 never updated, and a booking is immutable except for status. Dev C computes duration
 from endTime minus startTime instead, so there are two ways to get the same number.
 The fields are authoritative, because the rule reads them.
+
+## 2026-08-14 Scope Reduction: Single-device Push Notifications
+We originally planned a `tokens` subcollection for FCM to support multiple devices per trainer. To ensure i hit the Sprint 2 deadline and deliver the cancellation/return lifecycle, i reduced this to a single `fcmToken` string on the `users/{uid}` document. The rule enforces strict isolation using `changedKeysAre(['fcmToken'])`.
