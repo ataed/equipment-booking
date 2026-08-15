@@ -66,25 +66,32 @@ service cloud.firestore {
     // cap here because Firestore rules can't query collections to count 
     // a user's active bookings dynamically.
     // =======================================================================
-    match /users/{uid} {
+   match /users/{uid} {
       allow read: if signedIn();
       allow create, delete: if false;
 
-      allow update: if changedKeysAre(['activeBookings'])
-        && (
-          // Trainer claiming a slot (can only bump by 1, up to a max of 2)
-          (
-            request.auth.uid == uid
-            && request.resource.data.activeBookings == resource.data.activeBookings + 1
-            && request.resource.data.activeBookings <= 2
-          )
-          ||
-          // Manager releasing a slot after refusing a booking
-          (
-            isManager()
-            && request.resource.data.activeBookings == resource.data.activeBookings - 1
-            && request.resource.data.activeBookings >= 0
-          )
+      // Isolated write paths. A user can update activeBookings OR fcmToken, never both.
+      allow update: if 
+        // 1. Trainer claiming a slot
+        (
+          changedKeysAre(['activeBookings'])
+          && request.auth.uid == uid
+          && request.resource.data.activeBookings == resource.data.activeBookings + 1
+          && request.resource.data.activeBookings <= 2
+        )
+        ||
+        // 2. Manager releasing a slot after refusing a booking
+        (
+          changedKeysAre(['activeBookings'])
+          && isManager()
+          && request.resource.data.activeBookings == resource.data.activeBookings - 1
+          && request.resource.data.activeBookings >= 0
+        )
+        ||
+        // 3. Trainer registering an FCM token (Story 1)
+        (
+          changedKeysAre(['fcmToken'])
+          && request.auth.uid == uid
         );
     }
 
@@ -126,14 +133,20 @@ service cloud.firestore {
         && validSlotShape(request.resource.data)
         && deviceInService(request.resource.data.equipmentId);
 
-      // Only managers can update a booking. They can ONLY touch the status field, 
-      // and it MUST be moving from 'pending' to either 'approved' or 'refused'.
-      // If trainers could change this, it would bypass the whole approval flow.
-      allow update: if isManager()
-        && changedKeysAre(['status'])
-        && resource.data.status == 'pending'
-        && request.resource.data.status in ['approved', 'refused'];
-
+      //  Managers can approve/refuse pending bookings
+      allow update: if (
+          isManager()
+          && changedKeysAre(['status'])
+          && resource.data.status == 'pending'
+          && request.resource.data.status in ['approved', 'refused']
+        )
+        || 
+        //  Trainers can attach a damage photo to their own approved bookings
+        (
+          request.auth.uid == resource.data.trainerId
+          && resource.data.status == 'approved'
+          && changedKeysAre(['damaged', 'damagePhotoUrl'])
+        );
       allow delete: if false;
     }
 

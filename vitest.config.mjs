@@ -8,5 +8,6 @@ export default defineConfig({
     // beforeEach, so running them in parallel means one file wipes another's data
     // mid-test. Sequential is slower and correct.
     fileParallelism: false,
+    setupFiles: ["./tests/setup-admin-env.js"],
   },
 });

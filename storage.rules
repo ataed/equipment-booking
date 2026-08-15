@@ -1,0 +1,23 @@
+rules_version = '2';
+
+service firebase.storage {
+  match /b/{bucket}/o {
+    
+    match /damage/{trainerUid}/{bookingId} {
+      
+      // AC 7 & 8: Only the owner or a manager can read it
+      allow read: if request.auth != null 
+                  && (request.auth.uid == trainerUid || request.auth.token.role == 'manager');
+      
+      // AC 2, 3, 4, 5, 6, 9:
+      // 'allow write' covers create, update, and delete. 
+      // 'resource == null' guarantees this path is CREATE-ONLY. 
+      // If the file already exists, it instantly blocks overwrites and deletions.
+      allow write: if request.auth != null 
+                    && request.auth.uid == trainerUid 
+                    && request.resource.contentType.matches('image/.*') 
+                    && request.resource.size < 5242880
+                    && resource == null;
+    }
+  }
+}

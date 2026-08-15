@@ -11,6 +11,8 @@ parent would make those queries impossible.
 - email: string
 - role: "manager" | "trainer"
 - activeBookings: number
+- fcmToken: string | null
+*Note: Originally planned as a subcollection to support multiple devices. Scoped down to a single string field on the user document for Sprint 2 to accelerate delivery. A user receives notifications on their most recently active device.*
 
 No password field. Firebase Auth stores that, not Firestore. Role is stored
 twice: once as a custom claim (Auth reads this for rules) and once here (app
@@ -99,13 +101,3 @@ The booking document is the source of truth; slots is an index derived from it.
 Both are written by the same code path, in one module, so nothing else can make
 them disagree. If they ever do, the booking wins and the slot is the bug.
 
-## Planned
-
-users/{uid}/tokens/{tokenId}
-
-- token: string
-- createdAt: Timestamp
-
-FCM device tokens for push notifications. One subcollection per user, since a
-user can have multiple devices and tokens rotate. Came up while deciding
-collection structure; not needed until the notifications work starts.
