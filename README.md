@@ -20,10 +20,13 @@ In the order they were written, since each one feeds the next.
 - `docs/backlog-passes.md` - how the sprint order was decided. Three questions
   asked of each story alone, and what the answers changed.
 - `docs/sprint-1-ac.md` - Given/When/Then for the five Sprint 1 stories.
+- `docs/sprint-2-ac.md` - the same for the three Sprint 2 stories that were built.
 - `docs/work-split.md` - how the booking loop divides between three developers,
   read off a table of which files each story touches.
 - `docs/decisions.md` - choices where a reasonable person could have gone the
   other way, with the reason and the cost.
+- `docs/retro.md` - what took longer than expected, what should have been found
+  during planning, and what I would change.
 - `docs/NOTES.md` - my working notes. Method, not project state.
 - `docs/runbook-sprint-0.md` - the steps for Sprint 0, in order. Closed.
 - `spikes/` - throwaway scripts that answered one question each. Conclusions in
@@ -34,16 +37,22 @@ In the order they were written, since each one feeds the next.
 Sprint 0, done. Emulators, CI, seed data, the frozen contract, and one spike to
 settle how a free device gets assigned without two trainers getting the same one.
 
-Sprint 1, shipped. The core loop: a trainer books equipment and sees whether the
-manager approved it, without anyone opening WhatsApp.
+Sprint 1, shipped and deployed. The core loop: a trainer books equipment and sees
+whether the manager approved it, without anyone opening WhatsApp. Built as three
+lanes off the file table in `docs/work-split.md`.
 
-Sprint 2, not started. The lifecycle: returns, damage photos, push notifications,
-and the manager screens the seed script currently stands in for. Ordered in
-`docs/backlog-passes.md`, bottom of that list is what gets cut first.
+Sprint 2, three stories. The manager creates trainer accounts from the app, a
+trainer gets a push notification when a booking is decided, and a trainer attaches
+a damage photo. Not split: the split was demonstrated once and repeating it alone
+is practice rather than evidence.
+
+Seven backlog stories are not built. They are ordered with a cut order in
+`docs/backlog-passes.md`, and they are more CRUD against patterns the earlier
+stories already show. Stopping was a choice rather than running out of time.
 
 ## Running it
 
-Needs Node 24 and Java 21. Java because the Firestore emulator is a Java program.
+Needs Node 24 and Java 21. Java because the emulators are Java programs.
 
 ```
 npm ci
@@ -57,8 +66,8 @@ Emulator data is in memory, so the seed runs again every time the emulator does.
 Sign in with any seeded email, password `test1234`.
 
 ```
-npm run test:emulator    unit and rules tests, starts the emulator itself
-npm run test:e2e         the browser test, starts the dev server too
+npm run test:emulator    unit and rules tests, starts the emulators itself
+npm run test:e2e         the browser tests, start the dev server too
 npm run test:e2e:ui      the same, in Playwright's inspector. For writing tests, not CI.
 ```
 
@@ -69,11 +78,15 @@ Three kinds, each answering something the others cannot.
 - unit, a pure function with no database. The booking validator.
 - rules, does the emulator refuse the wrong actor. No browser, milliseconds. Most
   of the test suite, because rules are the only thing actually stopping anyone.
-- browser, does a write by one role show up on another role's screen. One test,
-  the whole loop, and the only kind that can check the parts fit together.
+- browser, does a write by one role show up on another role's screen. Two tests,
+  and the only kind that can check the parts fit together.
 
-52 unit and rules tests, one end to end test, all green in CI. Two jobs so a
-browser flake is visibly a different failure from a rule breaking.
+Two CI jobs, so a browser flake is visibly a different failure from a rule
+breaking.
+
+**The gap:** almost nothing tests that the modules do what the rules permit. Both
+silent bugs this project had lived there, and so does the damage upload. See
+`docs/retro.md`.
 
 ## Dependency hygiene
 
@@ -100,7 +113,7 @@ Open audit advisories and why they are accepted: `docs/decisions.md`.
 
 ## Environment
 
-`NEXT_PUBLIC_USE_EMULATORS` must equal the string `true` to connect to the local
+`NEXT_PUBLIC_USE_EMULATORS` must equal `true` to connect to the local
 emulators. Anything else, including unset, means the real project. Opt-in rather
 than derived from `NODE_ENV`, because a misspelled variable silently pointing a
 dev machine at production is the failure worth making impossible.
@@ -109,15 +122,24 @@ The other `NEXT_PUBLIC_FIREBASE_*` values are not secret. They are inlined into
 the browser bundle at build time and visible in any network tab. Rules protect the
 data, not those.
 
+`FIREBASE_SERVICE_ACCOUNT` is a real secret and the only one here. It is what lets
+the Admin SDK create accounts and send push notifications from a route handler. Not
+`NEXT_PUBLIC_`, never committed, set as an encrypted variable on Vercel.
+
 `scripts/seed.mjs` hardcodes the emulator hosts so it can never touch a real
 project. `scripts/seed-real.mjs` is a separate file for that, and it refuses to run
 without an explicit credential or if the emulator host vars are set.
 
 ## Status
 
-Sprint 1 shipped and deployed. A trainer books equipment and sees whether the
-manager approved it, with rules doing the blocking rather than the interface.
+Deployed and working: sign in by role, browse equipment, book a type and get a
+device assigned, see the status, approve or refuse, create trainer accounts, and a
+push notification when a booking is decided.
 
-Not usable by a real centre yet: accounts can only be created by running a script,
-and there is no return, cancel, damage reporting or equipment management. Those are
-Sprint 2.
+**Storage runs against the emulator only.** Cloud Storage needs the Blaze plan, so
+the damage photo works locally and is hidden in the deployed app. The rules are
+written and tested; the bucket is not provisioned.
+
+Still not usable by a real centre: no return, no cancel, no equipment management,
+and a damaged device stays bookable because taking it out of service is a story
+that was not built.
