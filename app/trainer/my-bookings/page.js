@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { RequireRole } from "@/components/RequireRole";
+import { DamageReport } from "@/components/DamageReport";
 import { listMyBookings } from "@/lib/bookings/mine";
 import { BOOKING_STATUS } from "@/lib/contract";
 
@@ -25,10 +26,16 @@ function MyBookings() {
   const [bookings, setBookings] = useState(null);
   const [error, setError] = useState(null);
 
+  async function load() {
+    try {
+      setBookings(await listMyBookings());
+    } catch (err) {
+      setError(err.code ?? "erreur");
+    }
+  }
+
   useEffect(() => {
-    listMyBookings()
-      .then(setBookings)
-      .catch((err) => setError(err.code ?? "erreur"));
+    load();
   }, []);
 
   if (error) return <p className="p-6 text-sm text-danger">Erreur: {error}</p>;
@@ -63,6 +70,12 @@ function MyBookings() {
               {b.startTime.toDate().toLocaleString("fr-FR")} — {b.durationHours}
               h
             </p>
+
+            {/* Only on approved bookings. A pending one has no equipment in hand
+                yet, and a refused one never will. */}
+            {b.status === BOOKING_STATUS.APPROVED && (
+              <DamageReport booking={b} onDone={load} />
+            )}
           </li>
         ))}
       </ul>

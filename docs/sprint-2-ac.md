@@ -115,6 +115,80 @@ Firestore trigger. A status changed any other way sends nothing.
 
 ---
 
+## 3. Attach a damage photo
+
+**Story**
+
+As a trainer, I want to attach a photo when equipment comes back damaged, so that
+the manager knows before someone else books it.
+
+**Acceptance criteria**
+
+1. Given I am signed in as a trainer with an approved booking
+   When I attach an image under 5 MB
+   Then the file is stored at `damage/{my uid}/{bookingId}`
+   And the booking is updated with `damaged: true` and the download URL
+
+2. Given I am signed in as trainer A
+   When a rules test uploads to `damage/trainer-b/...` as me
+   Then the upload is refused
+
+3. Given no one is signed in
+   When a rules test uploads to any damage path
+   Then the upload is refused
+
+4. Given I am signed in as a trainer
+   When a rules test uploads a file whose content type is not an image
+   Then the upload is refused
+
+5. Given I am signed in as a trainer
+   When a rules test uploads a file of 5 MB or more
+   Then the upload is refused
+
+6. Given a photo already exists at a path
+   When a rules test uploads to that same path again
+   Then the upload is refused
+
+7. Given a photo belonging to trainer A
+   When a rules test reads it as trainer B
+   Then the read is refused
+
+8. Given a photo belonging to trainer A
+   When a rules test reads it as a manager
+   Then the read is allowed
+
+9. Given a photo exists
+   When a rules test deletes it as its owner or as a manager
+   Then the delete is refused
+
+**Notes**
+
+Criterion 1's path is the design. Storage rules cannot read Firestore, so a rule
+cannot check that the booking exists or belongs to the uploader. The uid in the path
+is what makes ownership checkable without a lookup, the same move as the slot ID
+encoding device and hour.
+
+Criterion 6 is create-only, the same reasoning as the slots collection: a photo that
+can be replaced is one that can be replaced after a manager has looked at it.
+
+Criteria 7 and 8 are the bookings privacy rule one layer down. A trainer must not see
+another trainer's data, and that has to hold in Storage as well as in Firestore or
+the photo is the leak.
+
+Criterion 9 says by anyone on purpose. A damage report is evidence. Taking the device
+out of service is a separate decision recorded on the equipment, which is story 4 and
+not built.
+
+**Not covered**
+
+The story says "when equipment comes back damaged". The return flow is story 2 and is
+not built, so the photo attaches to an approved booking instead. And a damaged device
+stays bookable, because taking it out of service is story 4. The report is a signal to
+a human, not a state machine. See decisions.md.
+
+Storage requires the Blaze plan, so this works against the emulator and errors on the
+deployed app. The rules are real and tested; the bucket is not provisioned.
+
 ## Sprint 2 backlog, remaining one-liners
 
 Story 2: As a manager, I want to mark equipment returned, so that it can be booked
@@ -139,7 +213,3 @@ Story 9: As a manager, I want pending bookings to be automatically refused 30
 minutes before their start time or after 24 hours pending (whichever comes first),
 so that equipment isn't stuck unavailable because nobody looked at the request in
 time.
-
-**Deferred to avoid Blaze plan requirement:**
-Story 3: As a trainer, I want to attach a photo when equipment comes back damaged, so that
-the manager knows before someone else books it.
