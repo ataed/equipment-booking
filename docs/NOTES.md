@@ -247,17 +247,26 @@ Each step adds exactly one thing:
     Set up job         GitHub boots the machine
     checkout           clones my repo onto it. Without this there is no code
     setup-node         installs Node, and caches npm downloads between runs
+    setup-java         the emulators are Java programs
+    cache              the emulator jars, so they are not downloaded every run
     npm ci             installs dependencies from the lockfile
-    npm test           runs vitest
-    Post Run x2        setup-node saves the cache, checkout drops credentials
-    Complete job       machine destroyed
+    npm test           emulators:exec starts the emulators, runs vitest, shuts
+                       them down, and exits with vitest's status
+    Post Run           each action's cleanup, setup-node saves the cache, checkout 
+                       drops credentials
+    Complete job       machine destroyed 
+    
 
-Five of those nine steps are mine, in the order I wrote them. Four are GitHub's
-setup and teardown.
+The ones between checkout and the last Post Run are mine, in the order I wrote
+them. The rest is GitHub's setup and teardown.
 
 `npm ci`, not `npm install`. `ci` installs exactly the lockfile and fails if
 package.json disagrees. `install` resolves fresh, which would let a version
 published after my commit enter a build of that commit.
+
+Two jobs, not one. The fast job is the steps above. The browser job repeats them and
+adds Playwright's browser download, which needs running explicitly because
+ignore-scripts stops the automatic one.
 
 ### What CI proves that npm test locally does not
 
@@ -501,6 +510,13 @@ Admin SDK calls do not appear in the emulator UI Requests tab. That tab only sho
 client requests. So when the seed runs, the tab shows nothing, and it is no help
 for debugging why seeded data looks wrong.
 
+Where it lives here: `scripts/seed.mjs`, the rules tests via
+`withSecurityRulesDisabled`, and two route handlers, creating a trainer account and
+sending a push. Those two are the interesting ones: they are the first place Security
+Rules are not the boundary, because the Admin SDK ignores them. The handler verifies
+the caller's token and checks the role in code, and if that check were missing no rule
+anywhere would stop them.
+
 **Against the emulator it needs no credentials**, only two environment variables
 telling it where to connect:
 
@@ -676,3 +692,22 @@ Because the Admin SDK bypasses rules, `rules-unit-testing` against the emulator 
 
 **Data Integrity without rules:**
 Rules enforce schema shape (e.g., ensuring `activeBookings: 0` exists on creation). Since the Admin SDK bypasses rules, it also bypasses your shape validation. The route handler must enforce the required fields in code. A forgotten field here breaks the core booking loop later.
+
+## Storage rules cannot read Firestore
+
+No get() into the database from a storage rule. So a rule cannot check that a booking
+exists, or belongs to the uploader, or what its status is.
+
+The path carries it instead: damage/{uid}/{bookingId}, and ownership becomes
+request.auth.uid == uid with no lookup.
+
+Same move as the slot ID encoding device and hour. Put the fact in the key when the rule
+cannot go and find it.
+
+Also: request.resource in a storage rule is file metadata, not a document. Same name,
+different shape from Firestore's.
+
+And the emulator's state is per service. Wiping Firestore and leaving the bucket meant a
+create-only rule kept refusing what looked like a first upload, because an orphaned file
+from an earlier run was still there. The rule was correct and the teardown was
+incomplete. I changed a correct rule twice before checking the state.
